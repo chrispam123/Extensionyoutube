@@ -1,0 +1,18 @@
+[project]
+name = "nocturne-worker"
+version = "0.1.0"
+description = "Worker para procesamiento de suscripciones"
+authors = [
+    {name = "mzkchris"}
+]
+requires-python = "^3.12"
+dependencies = [
+    "boto3 (>=1.43.18,<2.0.0)",
+    "aws-lambda-powertools (>=3.29.0,<4.0.0)",
+    "python-dotenv (>=1.2.2,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

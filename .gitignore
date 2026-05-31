@@ -15,4 +15,5 @@ __pycache__/
 
 # LocalStack
 .localstack/
-.env  #licencia
+  #licencia
+.env
