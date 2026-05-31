@@ -17,3 +17,6 @@ __pycache__/
 .localstack/
   #licencia
 .env
+
+# LocalStack data
+docker/localstack/volume/
