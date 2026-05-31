@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  localstack:
+    container_name: nocturne_localstack
+    image: localstack/localstack:latest
+    ports:
+      - "127.0.0.1:4566:4566"            # LocalStack Gateway
+      - "127.0.0.1:4510-4559:4510-4559" # Puertos para servicios Pro
+    environment:
+      - SERVICES=s3,sqs,dynamodb,lambda,kms,ssm,iam # Añadimos IAM para probar permisos reales
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+       #<- PERSISTENCE=1 # Premium permite guardar el estado si reinicias el contenedor
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh" # Script de inicio
