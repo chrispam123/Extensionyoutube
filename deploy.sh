@@ -14,7 +14,7 @@ mkdir -p dist/lambda
 # 2. Empaquetado (Packaging)
 echo "📦 Preparando el paquete de la Lambda..."
 poetry export -f requirements.txt --output dist/lambda/requirements.txt
-pip install -r dist/lambda/requirements.txt -t dist/lambda/ --quiet
+poetry run pip install -r dist/lambda/requirements.txt -t dist/lambda/ --ignore-installed --quiet
 cp src/worker/handler.py dist/lambda/
 
 # Crear el ZIP (silenciosamente)
@@ -24,9 +24,9 @@ cd dist/lambda && zip -r ../worker.zip . > /dev/null && cd ../..
 echo "☁️  Subiendo Lambda a LocalStack..."
 
 # Intentar borrar la función por si ya existe (para que sea un despliegue limpio)
-awslocal lambda delete-function --function-name nocturne-worker-local 2>/dev/null || true
+poetry run awslocal lambda delete-function --function-name nocturne-worker-local 2>/dev/null || true
 
-awslocal lambda create-function \
+poetry run awslocal lambda create-function \
     --function-name nocturne-worker-local \
     --runtime python3.12 \
     --handler handler.lambda_handler \
@@ -43,7 +43,7 @@ QUEUE_ARN=$(awslocal sqs get-queue-attributes \
     --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
 
 # Crear el mapeo de eventos
-awslocal lambda create-event-source-mapping \
+poetry run awslocal lambda create-event-source-mapping \
     --function-name nocturne-worker-local \
     --event-source-arn "$QUEUE_ARN" \
     --batch-size 1
