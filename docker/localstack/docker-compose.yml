@@ -1,9 +1,9 @@
-version: "3.8"
+
 
 services:
   localstack:
     container_name: nocturne_localstack
-    image: localstack/localstack:latest
+    image: localstack/localstack-pro:latest
     ports:
       - "127.0.0.1:4566:4566"            # LocalStack Gateway
       - "127.0.0.1:4510-4559:4510-4559" # Puertos para servicios Pro
@@ -13,8 +13,14 @@ services:
       - SERVICES=s3,sqs,dynamodb,lambda,kms,ssm,iam # Añadimos IAM para probar permisos reales
       - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
-       PERSISTENCE=0 # Premium permite guardar el estado si reinicias el contenedor pero hemos puesto 0 para que no
+      - PERSISTENCE=0 # Premium permite guardar el estado si reinicias el contenedor pero hemos puesto 0 para que no
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh" # Script de inicio
+ #vecino_de_red:
+   #image: nginx:alpine
+   #container_name: contenedor_vecino
+
+
+#ambos usaran la misma red que docker compose asignara por defecto
