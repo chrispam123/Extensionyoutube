@@ -39,7 +39,7 @@ poetry run awslocal lambda create-function \
 echo "🔗 Conectando SQS con la Lambda..."
 
 # Obtener el ARN de la cola de forma automática (Sin copy-paste manual)
-QUEUE_ARN=$(poetry awslocal sqs get-queue-attributes \
+QUEUE_ARN=$(poetry run awslocal sqs get-queue-attributes \
     --queue-url http://localhost:4566/000000000000/nocturne-sqs-main-local \
     --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
 
