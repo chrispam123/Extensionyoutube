@@ -10,7 +10,7 @@ services:
     env_file:
       - ../../.env  # Sube dos niveles para encontrar el .env en la raíz
     environment:
-      - SERVICES=s3,sqs,dynamodb,lambda,kms,ssm,iam # Añadimos IAM para probar permisos reales
+      - SERVICES=s3,sqs,dynamodb,lambda,kms,ssm,iam,logs,xray # Añadimos IAM para probar permisos reales
       - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
       - PERSISTENCE=0 # Premium permite guardar el estado si reinicias el contenedor pero hemos puesto 0 para que no

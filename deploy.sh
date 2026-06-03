@@ -33,7 +33,7 @@ poetry run awslocal lambda create-function \
     --zip-file fileb://dist/worker.zip \
     --role arn:aws:iam::000000000000:role/nocturne-role-local \
     --timeout 30 \
-    --environment "Variables={AWS_ENDPOINT_URL=http://\$LOCALSTACK_HOSTNAME:4566, DYNAMODB_TABLE=nocturne-dynamo-jobs-local, S3_BUCKET=nocturne-s3-uploads-local}"
+    --environment "Variables={AWS_ENDPOINT_URL=http://localhost.localstack.cloud:4566, DYNAMODB_TABLE=nocturne-dynamo-jobs-local, S3_BUCKET=nocturne-s3-uploads-local}"
 
 # 4. Configuración del Trigger (SQS -> Lambda)
 echo "🔗 Conectando SQS con la Lambda..."

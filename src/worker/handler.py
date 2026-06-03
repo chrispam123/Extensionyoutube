@@ -69,11 +69,12 @@ def lambda_handler(event, context):
             raw_data = response["Body"].read().decode("utf-8")
             data = json.loads(raw_data)
 
-            # D. Simulación de Lógica de Negocio (Aquí iría YouTube después)
-            items_count = len(data.get("subscriptions", []))
-            logger.info(
-                f"Bala Trazadora exitosa: {items_count} suscripciones listas para procesar."
-            )
+            ## CORRECCIÓN: El JSON de YouTube es una lista directa
+            if isinstance(data, list):
+                items_count = len(data)
+            else:
+                items_count = 0
+            logger.info(f"Bala Trazadora exitosa: {items_count} canales encontrados.")
 
             # E. Finalizar (En la bala trazadora lo marcamos como DONE)
             table.update_item(
