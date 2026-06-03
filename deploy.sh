@@ -32,7 +32,8 @@ poetry run awslocal lambda create-function \
     --handler handler.lambda_handler \
     --zip-file fileb://dist/worker.zip \
     --role arn:aws:iam::000000000000:role/nocturne-role-local \
-    --environment "Variables={AWS_ENDPOINT_URL=http://localhost:4566, DYNAMODB_TABLE=nocturne-dynamo-jobs-local, S3_BUCKET=nocturne-s3-uploads-local}"
+    --timeout 30 \
+    --environment "Variables={AWS_ENDPOINT_URL=http://\$LOCALSTACK_HOSTNAME:4566, DYNAMODB_TABLE=nocturne-dynamo-jobs-local, S3_BUCKET=nocturne-s3-uploads-local}"
 
 # 4. Configuración del Trigger (SQS -> Lambda)
 echo "🔗 Conectando SQS con la Lambda..."
@@ -42,7 +43,20 @@ QUEUE_ARN=$(awslocal sqs get-queue-attributes \
     --queue-url http://localhost:4566/000000000000/nocturne-sqs-main-local \
     --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
 
-# Crear el mapeo de eventos
+# B. Buscar si ya existe un mapeo para esta función y borrarlo
+MAPPING_UUID=$(poetry run awslocal lambda list-event-source-mappings \
+    --function-name nocturne-worker-local \
+    --query "EventSourceMappings[0].UUID" --output text)
+
+if [ "$MAPPING_UUID" != "None" ] && [ "$MAPPING_UUID" != "" ]; then
+  echo "🗑️  Borrando mapeo previo (UUID: $MAPPING_UUID)..."
+  poetry run awslocal lambda delete-event-source-mapping --uuid "$MAPPING_UUID" > /dev/null
+
+  # Pequeña pausa para que LocalStack procese el borrado
+  sleep 2
+fi
+
+# C. Crear el nuevo mapeo
 poetry run awslocal lambda create-event-source-mapping \
     --function-name nocturne-worker-local \
     --event-source-arn "$QUEUE_ARN" \

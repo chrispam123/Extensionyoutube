@@ -10,6 +10,7 @@ python = "^3.12"
 boto3 = "1.35.0"
 aws-lambda-powertools = "3.4.1"
 python-dotenv = "1.0.1"
+aws-xray-sdk = "^2.15.0"
 
 [tool.poetry.group.dev.dependencies]
 awscli-local = "0.22.0"
