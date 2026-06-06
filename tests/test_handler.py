@@ -1,16 +1,27 @@
 import boto3
 import pytest
+import json
 from moto import mock_aws
 from src.worker.handler import lambda_handler
 
 
+# 1. Definimos el "Doble de Acción" para el contexto de AWS
+class MockContext:
+    def __init__(self):
+        self.function_name = "nocturne-worker-local"
+        self.memory_limit_in_mb = "128"
+        self.invoked_function_arn = (
+            "arn:aws:lambda:us-east-1:000000000000:function:nocturne-worker-local"
+        )
+        self.aws_request_id = "test-request-id"
+
+
 @mock_aws
 def test_handler_success():
-    # 1. PREPARAR (Simulamos AWS en memoria)
+    # 2. Configuración del entorno simulado
     s3 = boto3.client("s3", region_name="us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 
-    # Creamos el bucket y la tabla de mentira
     s3.create_bucket(Bucket="nocturne-s3-uploads-local")
     table = dynamodb.create_table(
         TableName="nocturne-dynamo-jobs-local",
@@ -19,23 +30,23 @@ def test_handler_success():
         ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
     )
 
-    # Ponemos un archivo de prueba en el S3 de mentira
+    # Datos de prueba
+    job_id = "job-1"
+    user_id = "user-1"
     s3.put_object(
         Bucket="nocturne-s3-uploads-local",
-        Key="uploads/user-1/job-1.json",
-        Body='[{"id": "chan1", "title": "Test Channel"}]',
+        Key=f"uploads/{user_id}/{job_id}.json",
+        Body=json.dumps([{"id": "chan1", "title": "Test"}]),
     )
+    table.put_item(Item={"jobId": job_id, "status": "PENDING"})
 
-    # Creamos el registro inicial en DynamoDB
-    table.put_item(Item={"jobId": "job-1", "status": "PENDING"})
+    # 3. EL DISPARO (Aquí pasamos el MockContext en lugar de None)
+    event = {"Records": [{"body": json.dumps({"jobId": job_id, "userId": user_id})}]}
 
-    # 2. ACTUAR (Llamamos a la función)
-    event = {"Records": [{"body": '{"jobId": "job-1", "userId": "user-1"}'}]}
-    response = lambda_handler(event, None)
+    # ¡ATENCIÓN AQUÍ! Pasamos una instancia de MockContext()
+    response = lambda_handler(event, MockContext())
 
-    # 3. VERIFICAR
+    # 4. Verificación
     assert response["status"] == "processed"
-
-    # Verificamos que en DynamoDB ahora diga DONE
-    item = table.get_item(Key={"jobId": "job-1"})["Item"]
+    item = table.get_item(Key={"jobId": job_id})["Item"]
     assert item["status"] == "DONE"
