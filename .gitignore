@@ -1,17 +1,35 @@
-# Python
+# --- PYTHON & POETRY ---
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 .pytest_cache/
+.mypy_cache/
+dist/
+build/
+poetry.lock.backup
 
-# Terraform
+# --- TERRAFORM ---
 .terraform/
 *.tfstate
 *.tfstate.backup
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
 
-# IDEs
+# --- DOCKER & LOCALSTACK ---
+docker/localstack/volume/
+.localstack/
+
+# --- SECRETOS & CONFIG (CRÍTICO) ---
+.env
+.env.*
+*.pem
+*.key
+secrets.json
+
+# --- IDEs ---
 .vscode/
 .idea/
-
-# LocalStack
-.localstack/
+*.swp
+.DS_Store (si usas Mac)
