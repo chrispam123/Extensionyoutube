@@ -17,7 +17,12 @@ class MockContext:
 
 
 @mock_aws
-def test_handler_success():
+def test_handler_success(monkeypatch):  # <--- Añadimos monkeypatch aquí
+    # 1. Simular las variables de entorno que la Lambda espera
+    monkeypatch.setenv("S3_BUCKET", "nocturne-s3-uploads-local")
+    monkeypatch.setenv("DYNAMODB_TABLE", "nocturne-dynamo-jobs-local")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+
     # 2. Configuración del entorno simulado
     s3 = boto3.client("s3", region_name="us-east-1")
     dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
