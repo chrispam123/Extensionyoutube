@@ -17,6 +17,7 @@ awscli-local = "0.22.0"
 pytest = "^9.0.3"
 moto = {extras = ["dynamodb", "s3"], version = "^5.2.1"}
 pytest-mock = "^3.15.1"
+black = "^26.5.1"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
