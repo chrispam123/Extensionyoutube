@@ -2,7 +2,9 @@ name: CI Validation
 
 on:
   push:
-    branches: [ develop ]
+    branches:
+      - develop
+      - 'feature/*'  # <--- Esto activa el CI en tus ramas de trabajo
   pull_request:
     branches: [ main, develop ]
 
