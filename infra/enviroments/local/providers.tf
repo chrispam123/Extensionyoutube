@@ -9,7 +9,7 @@ provider "aws" {
   token      = var.use_localstack ? "test" : null
   # ESTAS DOS LÍNEAS SON LA SOLUCIÓN:para que cree s3 bucket ntenta comunicarse con S3 usando un estilo de URL llamado Virtual Hosted-Style (ejemplo: extension-s3-uploads-local.s3.localhost.localstack.cloud
   s3_use_path_style           = var.use_localstack
-  skip_credentials_validation = var.use_localstack
+
   # 2. ELIMINAMOS EL FRENO DE MANO TEMPORALMENTE
   # Para que LocalStack no se confunda con STS, vamos a saltar la validación
   skip_credentials_validation = var.use_localstack
