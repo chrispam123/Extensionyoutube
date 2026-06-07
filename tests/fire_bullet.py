@@ -13,14 +13,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ENDPOINT = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-BUCKET = "nocturne-s3-uploads-local"
-TABLE = "nocturne-dynamo-jobs-local"
-QUEUE_NAME = "nocturne-sqs-main-local"
+REGION = os.getenv("AWS_REGION", "us-east-1")
 
+# BUCKET = "nocturne-s3-uploads-local"
+# TABLE = "nocturne-dynamo-jobs-local"
+# QUEUE_NAME = "nocturne-sqs-main-local"
+# 3. Nombres de Recursos (Leídos del entorno, NO hardcodeados)
+# Usamos el nombre de la variable del .env como fuente de verdad
+TABLE = os.getenv("DYNAMODB_TABLE")
+BUCKET = os.getenv("S3_BUCKET")
+QUEUE_NAME = os.getenv("SQS_QUEUE_NAME")
+# Verificación de seguridad: Si falta alguna variable, el script debe "Gritar"
+if not all([TABLE, BUCKET, QUEUE_NAME]):
+    print("❌ ERROR: Faltan variables de entorno. Revisa tu archivo .env")
+    exit(1)
+# 4. Inicialización de Clientes
+s3 = boto3.client("s3", endpoint_url=ENDPOINT, region_name=REGION)
+sqs = boto3.client("sqs", endpoint_url=ENDPOINT, region_name=REGION)
+dynamo = boto3.client("dynamodb", endpoint_url=ENDPOINT, region_name=REGION)
 # Clientes
-s3 = boto3.client("s3", endpoint_url=ENDPOINT)
-sqs = boto3.client("sqs", endpoint_url=ENDPOINT)
-dynamo = boto3.client("dynamodb", endpoint_url=ENDPOINT)
+# s3 = boto3.client("s3", endpoint_url=ENDPOINT)
+# sqs = boto3.client("sqs", endpoint_url=ENDPOINT)
+# dynamo = boto3.client("dynamodb", endpoint_url=ENDPOINT)
 
 
 def fire():
