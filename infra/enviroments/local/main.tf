@@ -41,3 +41,116 @@ resource "aws_sqs_queue" "jobs_queue" {
     maxReceiveCount     = 3
   })
 }
+# =============================================================================
+# 1. SEGURIDAD: ROL DE IAM PARA LA LAMBDA
+# =============================================================================
+
+# El "Contenedor" de la identidad
+resource "aws_iam_role" "lambda_exec_role" {
+  name = "extension-lambda-worker-role-local"
+
+  # Trust Policy: Permite que el servicio Lambda "asuma" este rol
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+# Los "Poderes" del rol: Privilegio Mínimo
+resource "aws_iam_role_policy" "lambda_permissions" {
+  name = "extension-lambda-permissions-local"
+  role = aws_iam_role.lambda_exec_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Permiso para escribir logs (Observabilidad)
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        # Permiso para el Bunker S3
+        Action   = ["s3:GetObject"]
+        Effect   = "Allow"
+        Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
+      },
+      {
+        # Permiso para el Cerebro DynamoDB
+        Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.jobs_table.arn
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# 2. EMPAQUETADO: CREACIÓN AUTOMÁTICA DEL ZIP
+# =============================================================================
+
+# Terraform genera el ZIP por nosotros.
+# NOTA: Para que esto funcione, las dependencias deben estar en la carpeta dist/lambda
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../dist/lambda"
+  output_path = "${path.module}/../../../dist/worker.zip"
+}
+
+# =============================================================================
+# 3. COMPUTACIÓN: LA FUNCIÓN LAMBDA WORKER DE MOMENTO
+# =============================================================================
+
+resource "aws_lambda_function" "worker_lambda" {
+  function_name    = "extension-worker-local"
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256 # Detecta cambios en el código
+
+  handler = "handler.lambda_handler"
+  runtime = "python3.12"
+  timeout = 30
+  role    = aws_iam_role.lambda_exec_role.arn
+
+  # INYECCIÓN DE DEPENDENCIAS:
+  # Terraform pasa los nombres reales de los recursos a la Lambda
+  environment {
+    variables = {
+      AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566"
+      S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
+      DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
+    }
+  }
+}
+
+# =============================================================================
+# 4. EVENTOS: CONEXIÓN SQS -> LAMBDA (TRIGGER)
+# =============================================================================
+
+resource "aws_lambda_event_source_mapping" "sqs_trigger" {
+  event_source_arn = aws_sqs_queue.jobs_queue.arn
+  function_name    = aws_lambda_function.worker_lambda.arn
+  batch_size       = 1
+  enabled          = true
+}
+# =============================================================================
+# OUTPUTS: La "Factura" de la Infraestructura con esto se actualiza el .env
+# =============================================================================
+
+output "dynamodb_table_name" {
+  value = aws_dynamodb_table.jobs_table.name
+}
+
+output "s3_bucket_name" {
+  value = aws_s3_bucket.uploads_bucket.id
+}
+
+output "sqs_queue_name" {
+  value = aws_sqs_queue.jobs_queue.name
+}
