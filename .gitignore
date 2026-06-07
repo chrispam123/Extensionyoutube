@@ -12,9 +12,14 @@ poetry.lock.backup
 # --- TERRAFORM ---
 .terraform/
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
+crash.log
 *.tfvars
 *.tfvars.json
+override.tf
+override.tf.json
+_override.tf
+_override.tf.json
 .terraform.lock.hcl
 
 # --- DOCKER & LOCALSTACK ---
