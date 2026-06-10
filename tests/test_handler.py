@@ -1,139 +1,85 @@
 # -*- coding: utf-8 -*-
-"""
-Project: Nocturne Backend
-Component: Worker Lambda (YouTube Integration + Relay Pattern)
-"""
-
-import json
-import os
 import boto3
-import binascii  # NUEVO: Para capturar errores de formato Base64
-from botocore.exceptions import ClientError
-from aws_lambda_powertools import Logger, Tracer
-
-# Importaciones de nuestra capa Shared
-from shared.security import decrypt_token
-from shared.google_auth import refresh_access_token
-from shared.youtube_client import YouTubeClient
-from shared.exceptions import QuotaExceededError, InvalidTokenError
-
-# 1. Configuración de Observabilidad
-logger = Logger()
-tracer = Tracer()
-
-# 2. Caché Global (Fuera del handler para Warm Starts)
-cached_secrets = {"client_id": None, "client_secret": None}
-
-# 3. Inicialización de Clientes AWS
-ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
-s3 = boto3.client("s3", endpoint_url=ENDPOINT_URL)
-dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
-kms_client = boto3.client("kms", endpoint_url=ENDPOINT_URL)
-ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
-sqs = boto3.client("sqs", endpoint_url=ENDPOINT_URL)
+import pytest
+import json
+from moto import mock_aws
+from src.worker.handler import lambda_handler
 
 
-def get_google_secrets():
-    """Recupera los secretos de Google desde SSM o del caché global."""
-    if not cached_secrets["client_id"] or not cached_secrets["client_secret"]:
-        logger.info("Caché de secretos vacío. Consultando SSM...")
-        cached_secrets["client_id"] = ssm.get_parameter(
-            Name="/extension/google/client_id"
-        )["Parameter"]["Value"]
-        cached_secrets["client_secret"] = ssm.get_parameter(
-            Name="/extension/google/client_secret"
-        )["Parameter"]["Value"]
-    return cached_secrets["client_id"], cached_secrets["client_secret"]
+class MockContext:
+    def __init__(self):
+        self.function_name = "extension-worker-local"
+        self.memory_limit_in_mb = "128"
+        self.invoked_function_arn = (
+            "arn:aws:lambda:us-east-1:000000000000:function:extension-worker-local"
+        )
+        self.aws_request_id = "test-request-id"
 
 
-@logger.inject_lambda_context
-@tracer.capture_lambda_handler
-def lambda_handler(event, context):
-    table_name = os.getenv("DYNAMODB_TABLE")
-    table = dynamo.Table(table_name)
-    queue_url = os.getenv("SQS_QUEUE_URL")
+@mock_aws
+def test_handler_success(monkeypatch, mocker):
+    # 1. ARRANGE: Configuración de entorno
+    monkeypatch.setenv("S3_BUCKET", "extension-s3-uploads-local")
+    monkeypatch.setenv("DYNAMODB_TABLE", "extension-dynamo-jobs-local")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("SQS_QUEUE_URL", "http://fake-queue-url")
 
-    for record in event.get("Records", []):
-        try:
-            # A. Identificación del Trabajo
-            payload = json.loads(record["body"])
-            job_id = payload.get("jobId")
-            user_id = payload.get("userId")
+    # --- MOCKS DE LÓGICA (Evitamos KMS y Google) ---
+    # Parcheamos el descifrado para que devuelva un token plano directamente
+    mocker.patch(
+        "src.worker.handler.decrypt_token", return_value="token-real-desbloqueado"
+    )
 
-            logger.info(f"Procesando Job: {job_id} para Usuario: {user_id}")
+    # Parcheamos el refresco de Google
+    mocker.patch(
+        "src.worker.handler.refresh_access_token", return_value="fake-access-token"
+    )
 
-            # B. Recuperar Estado y Tokens de DynamoDB
-            job_response = table.get_item(Key={"jobId": job_id})
-            job_item = job_response.get("Item", {})
+    # Parcheamos el cliente de YouTube
+    mock_yt = mocker.patch("src.worker.handler.YouTubeClient")
+    mock_yt.return_value.get_subscriptions.return_value = {
+        "items": [{"id": "chan1"}],
+        "nextPageToken": None,
+    }
 
-            encrypted_refresh_token = job_item.get("encryptedRefreshToken")
-            current_page_token = job_item.get("nextPageToken")
+    # 2. RECURSOS AWS (Moto)
+    s3 = boto3.client("s3", region_name="us-east-1")
+    dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+    ssm = boto3.client("ssm", region_name="us-east-1")
 
-            # C. Fase de Identidad (KMS + Google OAuth2)
-            client_id, client_secret = get_google_secrets()
+    ssm.put_parameter(Name="/extension/google/client_id", Value="fake", Type="String")
+    ssm.put_parameter(
+        Name="/extension/google/client_secret", Value="fake", Type="String"
+    )
+    s3.create_bucket(Bucket="extension-s3-uploads-local")
 
-            if not encrypted_refresh_token:
-                logger.error(f"No hay token cifrado para el Job {job_id}. Abortando.")
-                continue
+    table = dynamodb.create_table(
+        TableName="extension-dynamo-jobs-local",
+        KeySchema=[{"AttributeName": "jobId", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "jobId", "AttributeType": "S"}],
+        ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
+    )
 
-            try:
-                # Intentamos descifrar
-                refresh_token = decrypt_token(kms_client, encrypted_refresh_token)
-            except (binascii.Error, ValueError) as e:
-                # NUEVO: Captura específica de error de formato Base64
-                logger.error(f"El token en DynamoDB no es un Base64 válido: {str(e)}")
-                continue
+    job_id = "job-1"
+    table.put_item(
+        Item={
+            "jobId": job_id,
+            "status": "PENDING",
+            "encryptedRefreshToken": "cualquier-cosa-no-importa-el-mock-lo-saltara",
+        }
+    )
 
-            # Obtenemos un Access Token fresco
-            access_token = refresh_access_token(client_id, client_secret, refresh_token)
+    s3.put_object(
+        Bucket="extension-s3-uploads-local",
+        Key=f"uploads/user-1/{job_id}.json",
+        Body=json.dumps([{"id": "chan1"}]),
+    )
 
-            # D. Fase de Ejecución (YouTube API)
-            yt = YouTubeClient(access_token)
+    # 3. ACT: Ejecutar la Lambda
+    event = {"Records": [{"body": json.dumps({"jobId": job_id, "userId": "user-1"})}]}
+    response = lambda_handler(event, MockContext())
 
-            try:
-                yt_response = yt.get_subscriptions(
-                    max_results=50, page_token=current_page_token
-                )
-                items = yt_response.get("items", [])
-                next_page_token = yt_response.get("nextPageToken")
-
-                # E. Actualización de Progreso (Atómica)
-                table.update_item(
-                    Key={"jobId": job_id},
-                    UpdateExpression="SET #s = :run, nextPageToken = :next ADD doneCount :inc",
-                    ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={
-                        ":run": "RUNNING",
-                        ":next": next_page_token,
-                        ":inc": len(items),
-                    },
-                )
-
-                # F. Lógica de Relevo (Relay Pattern)
-                if next_page_token:
-                    sqs.send_message(
-                        QueueUrl=queue_url,
-                        MessageBody=json.dumps({"jobId": job_id, "userId": user_id}),
-                    )
-                else:
-                    table.update_item(
-                        Key={"jobId": job_id},
-                        UpdateExpression="SET #s = :done",
-                        ExpressionAttributeNames={"#s": "status"},
-                        ExpressionAttributeValues={":done": "DONE"},
-                    )
-
-            except QuotaExceededError:
-                table.update_item(
-                    Key={"jobId": job_id},
-                    UpdateExpression="SET #s = :paused",
-                    ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={":paused": "PAUSED_QUOTA"},
-                )
-                return {"status": "paused_by_quota"}
-
-        except Exception as e:
-            logger.exception(f"Error crítico en el Worker: {str(e)}")
-            raise e
-
-    return {"status": "processed"}
+    # 4. ASSERT: Verificar éxito
+    assert response["status"] == "processed"
+    item = table.get_item(Key={"jobId": job_id})["Item"]
+    assert item["status"] == "DONE"
