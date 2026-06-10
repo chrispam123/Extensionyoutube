@@ -20,6 +20,8 @@ jobs:
       AWS_DEFAULT_REGION: us-east-1
       AWS_REGION: us-east-1
     # -----------------------------------------
+      PYTHONPATH: src # <--- ESTA ES LA LLAVE
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
