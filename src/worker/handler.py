@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Project: Nocturne Backend
-Component: Worker Lambda (Tracer Bullet)
+Component: Worker Lambda (Tracer Bullet + KMS Identity)
 License: Proprietary
 """
 
@@ -11,24 +11,31 @@ import boto3
 from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger, Tracer
 
+# NUEVO: Importación de la capa compartida de seguridad
+# Esto permite que la lógica de cifrado sea reutilizable por otras Lambdas
+from shared.security import decrypt_token
+
 # 1. Configuración de Observabilidad
 logger = Logger()
 tracer = Tracer()
 
-# 2. Inicialización de Clientes (Fuera del handler para reutilizar conexión)
-# Usamos la variable de entorno para decidir si apuntamos a LocalStack o AWS
+# 2. Inicialización de Clientes (Fuera del handler para reutilizar conexión - Warm Start)
 ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
 s3 = boto3.client("s3", endpoint_url=ENDPOINT_URL)
 dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
+
+# NUEVO: Inicialización del cliente de KMS fuera del handler
+# Principio DevOps: Reutilizamos la conexión TCP/SSL para reducir latencia en ejecuciones calientes
+kms_client = boto3.client("kms", endpoint_url=ENDPOINT_URL)
 
 
 @logger.inject_lambda_context
 @tracer.capture_lambda_handler
 def lambda_handler(event, context):
     """
-    Procesa mensajes de SQS para exportar/importar suscripciones.
+    Procesa mensajes de SQS, descifra tokens de usuario y gestiona suscripciones.
     """
-    table_name = os.getenv("DYNAMODB_TABLE", "nocturne-dynamo-jobs-local")
+    table_name = os.getenv("DYNAMODB_TABLE", "extension-dynamo-jobs-local")
     table = dynamo.Table(table_name)
 
     for record in event.get("Records", []):
@@ -45,7 +52,6 @@ def lambda_handler(event, context):
             logger.info(f"Iniciando procesamiento de Job: {job_id}")
 
             # B. Actualizar Estado en DynamoDB (Cerebro)
-            # Usamos una expresión condicional para asegurar que solo procesamos si está PENDING
             try:
                 table.update_item(
                     Key={"jobId": job_id},
@@ -59,6 +65,30 @@ def lambda_handler(event, context):
                     logger.warning(f"El Job {job_id} no existe o ya fue procesado.")
                     continue
                 raise
+
+            # =================================================================
+            # NUEVO: LÓGICA DE DESCIFRADO DE TOKEN (ÉPICA IDENTIDAD)
+            # =================================================================
+            # 1. Recuperamos el registro completo de DynamoDB para obtener el token cifrado
+            job_response = table.get_item(Key={"jobId": job_id})
+            job_item = job_response.get("Item", {})
+            encrypted_token = job_item.get("encryptedRefreshToken")
+
+            if not encrypted_token:
+                logger.warning(
+                    f"No se encontró 'encryptedRefreshToken' para el Job {job_id}. Saltando descifrado."
+                )
+            else:
+                # 2. Desciframos usando la utilidad compartida.
+                # Inyectamos el kms_client global para máxima eficiencia.
+                token_real = decrypt_token(kms_client, encrypted_token)
+
+                # LOG DE SEGURIDAD: Solo mostramos un rastro parcial (4 caracteres) para auditoría.
+                # Principio DevOps: Nunca exponer secretos completos en logs.
+                logger.info(
+                    f"Token descifrado con éxito. (Prefix: {token_real[:4]}...)"
+                )
+            # =================================================================
 
             # C. Simular descarga del Bunker (S3)
             bucket = os.getenv("S3_BUCKET")
@@ -86,7 +116,6 @@ def lambda_handler(event, context):
 
         except Exception as e:
             logger.exception(f"Fallo crítico en el Worker: {str(e)}")
-            # Al lanzar la excepción, SQS mantendrá el mensaje para reintento
             raise e
 
     return {"status": "processed"}
