@@ -3,6 +3,7 @@
 Shared Security Module
 Purpose: Handle KMS encryption/decryption with Base64 safety.
 """
+
 import base64
 import os
 from aws_lambda_powertools import Logger
