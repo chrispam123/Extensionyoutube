@@ -46,8 +46,8 @@ resource "aws_sqs_queue" "jobs_queue" {
 # =============================================================================
 
 # El "Contenedor" de la identidad
-resource "aws_iam_role" "lambda_exec_role" {
-  name = "extension-lambda-worker-role-local"
+resource "aws_iam_role" "worker_role" {
+  name = "extension-worker-role-local"
 
   # Trust Policy: Permite que el servicio Lambda "asuma" este rol
   assume_role_policy = jsonencode({
@@ -63,9 +63,9 @@ resource "aws_iam_role" "lambda_exec_role" {
 }
 
 # Los "Poderes" del rol: Privilegio Mínimo
-resource "aws_iam_role_policy" "lambda_permissions" {
-  name = "extension-lambda-permissions-local"
-  role = aws_iam_role.lambda_exec_role.id
+resource "aws_iam_role_policy" "worker_permissions" {
+  name = "extension-worker-permissions-local"
+  role = aws_iam_role.worker_role.id # <--- Referencia actualizada
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -87,6 +87,12 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
         Effect   = "Allow"
         Resource = aws_dynamodb_table.jobs_table.arn
+      },
+       # --- NUEVO PERMISO: DESCIFRADO ---
+      {
+        Action   = ["kms:Decrypt"]
+        Effect   = "Allow"
+        Resource = aws_kms_key.token_key.arn
       }
     ]
   })
@@ -116,7 +122,7 @@ resource "aws_lambda_function" "worker_lambda" {
   handler = "handler.lambda_handler"
   runtime = "python3.12"
   timeout = 30
-  role    = aws_iam_role.lambda_exec_role.arn
+  role    = aws_iam_role.worker_role.arn # <--- Referencia actualizada
 
   # INYECCIÓN DE DEPENDENCIAS:
   # Terraform pasa los nombres reales de los recursos a la Lambda
@@ -125,6 +131,7 @@ resource "aws_lambda_function" "worker_lambda" {
       AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566"
       S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
       DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
+      KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
     }
   }
 }
@@ -139,6 +146,39 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   batch_size       = 1
   enabled          = true
 }
+
+# 1. LA LLAVE MAESTRA
+resource "aws_kms_key" "token_key" {
+  description             = "Llave para Refresh Tokens"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  # Key Policy básica para permitir que IAM gestione los permisos
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::000000000000:root" # En AWS real sería tu cuenta
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# 2. EL ALIAS (La dirección postal amigable)
+resource "aws_kms_alias" "token_key_alias" {
+  name          = "alias/extension/token-key"
+  target_key_id = aws_kms_key.token_key.key_id
+}
+
+
+
+
 # =============================================================================
 # OUTPUTS: La "Factura" de la Infraestructura con esto se actualiza el .env
 # =============================================================================
