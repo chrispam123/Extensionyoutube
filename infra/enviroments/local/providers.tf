@@ -26,6 +26,8 @@ provider "aws" {
       iam      = "http://localhost:4566"
       sts      = "http://localhost:4566"
       kms      = "http://localhost:4566" # <--- Asegúrate de que esta línea esté
+      ssm = "http://localhost:4566"
+
     }
   }
 }

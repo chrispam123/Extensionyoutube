@@ -70,29 +70,47 @@ resource "aws_iam_role_policy" "worker_permissions" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
+      { Sid      = "AllowLogging"
         # Permiso para escribir logs (Observabilidad)
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
         Effect   = "Allow"
         Resource = "arn:aws:logs:*:*:*"
       },
-      {
+      { Sid      = "AllowS3Read"
         # Permiso para el Bunker S3
         Action   = ["s3:GetObject"]
         Effect   = "Allow"
         Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
       },
-      {
+      { Sid      = "AllowDynamoWrite"
         # Permiso para el Cerebro DynamoDB
         Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
         Effect   = "Allow"
         Resource = aws_dynamodb_table.jobs_table.arn
       },
        # --- NUEVO PERMISO: DESCIFRADO ---
-      {
+      { Sid      = "AllowKMSDecrypt"
         Action   = ["kms:Decrypt"]
         Effect   = "Allow"
         Resource = aws_kms_key.token_key.arn
+      },
+
+      #ACTUALIZACIÓN DE PERMISOS (Añadir SQS SendMessage)
+      {
+        Sid      = "AllowSQSReplay"
+        Action   = ["sqs:SendMessage"]
+        Effect   = "Allow"
+        Resource = aws_sqs_queue.jobs_queue.arn
+      },
+       # --- NUEVO: PERMISO PARA SECRETOS DE GOOGLE ---
+      {
+        Sid      = "AllowSSMRead"
+        Action   = ["ssm:GetParameter"]
+        Effect   = "Allow"
+        Resource = [
+          aws_ssm_parameter.google_client_id.arn,
+          aws_ssm_parameter.google_client_secret.arn
+        ]
       }
     ]
   })
@@ -132,6 +150,7 @@ resource "aws_lambda_function" "worker_lambda" {
       S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
       DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
+      SQS_QUEUE_URL    = aws_sqs_queue.jobs_queue.url # <--- NUEVA VARIABLE
     }
   }
 }
@@ -176,6 +195,29 @@ resource "aws_kms_alias" "token_key_alias" {
   target_key_id = aws_kms_key.token_key.key_id
 }
 
+# =============================================================================
+# 6. CONFIGURACIÓN: GOOGLE API SECRETS (SSM)
+# =============================================================================
+
+resource "aws_ssm_parameter" "google_client_id" {
+  name  = "/extension/google/client_id"
+  type  = "String" # En AWS real usaríamos 'SecureString'
+  value = "REPLACE_ME" # Lo llenaremos vía CLI o .env
+  # ESTO ES VITAL:Crea el parámetro la primera vez, pero después ignora si el valor cambia asi ejecutes 100 veces
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "google_client_secret" {
+  name  = "/extension/google/client_secret"
+  type  = "String"
+  value = "REPLACE_ME"
+  # ESTO ES VITAL:Crea el parámetro la primera vez, pero después ignora si el valor cambia asi ejecutes 100 veces
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
 
 
 
