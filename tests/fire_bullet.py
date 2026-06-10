@@ -7,6 +7,7 @@ Description: Simulates the full flow using real YouTube JSON format.
 import boto3
 import json
 import os
+import base64
 from dotenv import load_dotenv
 
 # Cargar variables del .env
@@ -31,6 +32,9 @@ if not all([TABLE, BUCKET, QUEUE_NAME]):
 s3 = boto3.client("s3", endpoint_url=ENDPOINT, region_name=REGION)
 sqs = boto3.client("sqs", endpoint_url=ENDPOINT, region_name=REGION)
 dynamo = boto3.client("dynamodb", endpoint_url=ENDPOINT, region_name=REGION)
+# 1. Añadimos el cliente de KMS se va probar el encriptado
+kms = boto3.client("kms", endpoint_url=ENDPOINT, region_name=REGION)
+KMS_KEY_ALIAS = os.getenv("KMS_KEY_ALIAS")
 # Clientes
 # s3 = boto3.client("s3", endpoint_url=ENDPOINT)
 # sqs = boto3.client("sqs", endpoint_url=ENDPOINT)
@@ -40,15 +44,25 @@ dynamo = boto3.client("dynamodb", endpoint_url=ENDPOINT, region_name=REGION)
 def fire():
     job_id = "job-yt-001"
     user_id = "user-serudda"
+    # CIFRADO PREVIO: Simulamos que el Dispatcher cifra el token
+    print(f"--- Cifrando token para el usuario {user_id} ---")
+    token_plano = "google_refresh_token_fake_12345"
+    kms_response = kms.encrypt(
+        KeyId=KMS_KEY_ALIAS, Plaintext=token_plano.encode("utf-8")
+    )
 
-    # 1. Crear registro en DynamoDB
-    print(f"--- Creando Job {job_id} en DynamoDB ---")
+    # Convertimos los bytes cifrados a Base64 para guardarlos en DynamoDB
+    ciphertext_b64 = base64.b64encode(kms_response["CiphertextBlob"]).decode("utf-8")
+
+    # 3. GUARDAR EN DYNAMODB
+    print(f"--- Creando Job {job_id} con token cifrado ---")
     dynamo.put_item(
         TableName=TABLE,
         Item={
             "jobId": {"S": job_id},
             "status": {"S": "PENDING"},
             "userId": {"S": user_id},
+            "encryptedRefreshToken": {"S": ciphertext_b64},  # <--- EL TESORO GUARDADO
         },
     )
 
