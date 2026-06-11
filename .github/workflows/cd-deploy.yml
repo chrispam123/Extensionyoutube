@@ -53,7 +53,14 @@ jobs:
       # --- PASO DE INFRAESTRUCTURA: TERRAFORM ---
       - name: Terraform Setup
         uses: hashicorp/setup-terraform@v3
-
+# --- PASO DE DIAGNÓSTICO ---
+      - name: List files for debugging
+        run: |
+          echo "📍 Directorio actual:"
+          pwd
+          echo "📂 Contenido del repositorio:"
+          ls -R
+      # ---------------------------
       - name: Terraform Init & Apply
         working-directory: infra/environments/dev
         run: |
