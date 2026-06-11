@@ -63,6 +63,13 @@ jobs:
       # ---------------------------
       - name: Terraform Init & Apply
         working-directory: infra/environments/dev
+        # --- AQUÍ INYECTAMOS LAS RESPUESTAS ---
+        env:
+          TF_VAR_aws_region: "us-east-1"
+          TF_VAR_use_localstack: "false"
+        # --------------------------------------
         run: |
           terraform init
-          terraform apply -auto-approve
+          # Añadimos -input=false para que Terraform falle rápido si falta algo
+          # en lugar de quedarse colgado preguntando.
+          terraform apply -auto-approve -input=false
