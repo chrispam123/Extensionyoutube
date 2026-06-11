@@ -1,0 +1,53 @@
+name: CD Deployment (Dev)
+
+on:
+  push:
+    branches: [ develop ] # Se dispara al hacer merge o push a develop
+
+permissions:
+  id-token: write   # Obligatorio para OIDC
+  contents: read    # Obligatorio para leer el código
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: development # Conecta con el búnker de secretos 'development'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      # --- PASO CRÍTICO: CONSTRUCCIÓN DEL ARTEFACTO ---
+      # Replicamos exactamente lo que hacías en tu Linux Mint
+      - name: Build Lambda Artifact
+        run: |
+          mkdir -p dist/lambda
+          poetry export -f requirements.txt --output dist/lambda/requirements.txt
+          pip install -r dist/lambda/requirements.txt -t dist/lambda/ --ignore-installed --quiet
+          cp src/worker/handler.py dist/lambda/
+          cp -r src/shared dist/lambda/
+
+      # --- PASO DE IDENTIDAD: ASUMIR ROL DE AWS ---
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # --- PASO DE INFRAESTRUCTURA: TERRAFORM ---
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply
+        working-directory: infra/environments/dev
+        run: |
+          terraform init
+          terraform apply -auto-approve
