@@ -1,107 +1,93 @@
 # Nocturne Backend — Contexto del Proyecto
 
 ## Qué es
-
-Backend serverless para una extensión de YouTube que importa/exporta suscripciones de cualquier cuenta de usuario.
+Backend serverless para una extensión de YouTube que
+importa/exporta suscripciones de cualquier cuenta de usuario.
 
 ## Arquitectura
-
-```
 [Extensión YouTube] → API → SQS → Lambda Worker → S3 + DynamoDB
-```
 
-- **SQS Main Queue** → dispara Lambda (batch size 1)
-- **SQS DLQ** → mensajes fallidos (maxReceiveCount: 3)
-- **Lambda Worker** → lee JSON de S3, actualiza estado en DynamoDB
-- **S3** → almacena datos exportados/importados (JSON con canales/playlists)
-- **DynamoDB** → tabla de jobs (PK: `jobId`, estados: PENDING → RUNNING → DONE)
-- **Patrón Claim Check** → SQS lleva solo `jobId` + `userId`, datos pesados en S3
+- SQS Main Queue → dispara Lambda (batch size 1)
+- SQS DLQ → mensajes fallidos (maxReceiveCount: 3)
+- Lambda Worker → lee JSON de S3, actualiza estado en DynamoDB
+- S3 → almacena datos exportados/importados (JSON canales/playlists)
+- DynamoDB → tabla de jobs (PK: jobId)
+- Patrón Claim Check → SQS lleva solo jobId + userId, datos pesados en S3
 
-## Stack Técnico
-
-- **Lenguaje:** Python 3.12
-- **Gestión deps:** Poetry
-- **IaC:** Terraform (state en S3 real con lock nativo)
-- **Local:** LocalStack Pro (docker-compose)
-- **Observabilidad:** aws-lambda-powertools (Logger + Tracer/X-Ray)
-- **Testing:** pytest + moto (mocks AWS) + pytest-mock
-- **Lint/Format:** Black + pre-commit hooks
-- **CI/CD:** GitHub Actions
+## Stack
+- Lenguaje: Python 3.12
+- Gestión deps: Poetry
+- IaC: Terraform (state en S3 real con lock nativo)
+- Local: LocalStack Pro (docker-compose)
+- Observabilidad: aws-lambda-powertools (Logger + Tracer/X-Ray)
+- Testing: pytest + moto + pytest-mock
+- Lint/Format: Black + pre-commit hooks
+- CI/CD: GitHub Actions
 
 ## Entornos
+- local: LocalStack + Terraform — funcional
+- dev: AWS real — pendiente
+- prod: AWS real — pendiente
 
-| Entorno | Estado | Infra |
-|---------|--------|-------|
-| local | ✅ Funcional | LocalStack + Terraform |
-| dev | 🔲 Pendiente | AWS real |
-| prod | 🔲 Pendiente | AWS real |
-
-## Estructura del Proyecto
-
-```
+## Estructura
 nocturne-backend/
 ├── src/worker/handler.py        # Lambda principal
 ├── tests/
 │   ├── test_handler.py          # Tests unitarios (moto)
 │   └── fire_bullet.py           # Test integración manual (LocalStack)
 ├── infra/enviroments/
-│   ├── local/                   # Terraform para LocalStack
-│   ├── dev/                     # (pendiente)
-│   └── prod/                    # (pendiente)
+│   ├── local/
+│   ├── dev/
+│   └── prod/
 ├── docker/localstack/
 │   ├── docker-compose.yml
-│   └── init-aws.sh             # Bootstrap recursos LocalStack
-├── dist/                        # Artefactos de deploy (Lambda ZIP)
-├── deploy.sh                    # Deploy manual a LocalStack
-├── .github/workflows/
-│   └── ci-validation.yml        # CI: lint + tests
-└── .env                         # Variables locales (no versionado)
-```
+│   └── init-aws.sh             # DEPRECADO — pendiente eliminar
+├── dist/                        # Artefactos Lambda ZIP
+├── deploy.sh                    # Deploy manual LocalStack
+└── .github/workflows/
+    └── ci-validation.yml
 
-## CI/CD Actual
-
-### CI (`ci-validation.yml`)
-- **Triggers:** push a `develop` y `feature/*`, PRs a `main`/`develop`
-- **Steps:** checkout → Python 3.12 → Poetry → cache venv → install deps → Black --check → pytest
-- **Entorno:** credenciales fake de AWS para moto
-
-### CD
-- No implementado aún. Deploy local es manual (`deploy.sh` o `terraform apply`).
-
-## Terraform
-
-- **Backend:** S3 (`extension-terraform-state-youtube`, key: `local/terraform.tfstate`)
-- **Lock:** Nativo S3 (use_lockfile = true, sin DynamoDB)
-- **Provider local:** Endpoints redirigidos a `localhost:4566`, credenciales fake
-- **Recursos:** DynamoDB table, S3 bucket, SQS queues (main + DLQ), IAM role, Lambda, Event Source Mapping
-
-## Naming
-
-- Convención: `extension-{recurso}-{entorno}` (ej: `extension-dynamo-jobs-local`)
+## Naming de recursos
+- Convención: extension-{recurso}-{entorno}
+- Ejemplos: extension-dynamo-jobs-local, extension-sqs-main-dev
 - Fuente de verdad: Terraform
-- `init-aws.sh` está deprecado (pendiente de eliminar), usaba prefijo `nocturne-*`
+- NUNCA usar prefijo nocturne-* — deprecado, solo en init-aws.sh
 
-## Variables de Entorno (.env)
+## Variables de entorno
+- AWS_ENDPOINT_URL — endpoint LocalStack (solo local)
+- DYNAMODB_TABLE — nombre tabla DynamoDB
+- S3_BUCKET — nombre bucket S3
+- SQS_QUEUE_NAME — nombre cola SQS
+- AWS_REGION — us-east-1
+- Nunca en código — siempre desde variables de entorno o SSM
 
-- `AWS_ENDPOINT_URL` — endpoint LocalStack
-- `DYNAMODB_TABLE` — nombre tabla DynamoDB
-- `S3_BUCKET` — nombre bucket S3
-- `SQS_QUEUE_NAME` — nombre cola SQS
-- `AWS_REGION` — us-east-1
+## Worker Lambda — flujo de estados
+PENDING → RUNNING → DONE
+1. Mensaje llega de SQS con jobId + userId
+2. Lambda actualiza DynamoDB a RUNNING
+3. Lee JSON de S3 usando jobId
+4. Procesa suscripciones
+5. Actualiza DynamoDB a DONE
 
-## Fase Actual
+## Restricciones críticas
+- IAM: mínimo privilegio — nunca Action: "*" ni Resource: "*" juntos
+- Naming: siempre extension-{recurso}-{entorno} — sin excepciones
+- Secrets: ninguna credencial en código ni hardcodeada en Terraform
+- Estado Terraform: nunca modificar el backend S3 manualmente
+- init-aws.sh: no usar como referencia — está deprecado
+- Tests: moto para unitarios, nunca llamadas reales a AWS en pytest
 
-**Bala Trazadora (Tracer Bullet)** — flujo end-to-end funcional en local:
-1. Se sube JSON de suscripciones YouTube a S3
-2. Se crea job PENDING en DynamoDB
-3. Se envía mensaje a SQS
-4. Lambda procesa: actualiza a RUNNING → lee S3 → actualiza a DONE
+## Fase actual
+Bala trazadora end-to-end funcional en local:
+1. JSON de suscripciones subido a S3
+2. Job PENDING creado en DynamoDB
+3. Mensaje enviado a SQS
+4. Lambda procesa: RUNNING → lee S3 → DONE
 
 ## Pendiente
-
-- [ ] Workflow CD (deploy a dev/prod)
-- [ ] Infraestructura Terraform para dev y prod
-- [ ] API Gateway / endpoint para la extensión
-- [ ] Lógica real de import/export YouTube API
-- [ ] Más tests (edge cases, errores)
-- [ ] Coverage en CI
+- Workflow CD (deploy a dev/prod)
+- Infraestructura Terraform dev y prod
+- API Gateway
+- Lógica real YouTube API
+- Edge cases en tests
+- Coverage en CI

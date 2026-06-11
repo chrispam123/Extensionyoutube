@@ -38,3 +38,5 @@ secrets.json
 .idea/
 *.swp
 .DS_Store (si usas Mac)
+#excepciones
+CHEATSHEET.md
