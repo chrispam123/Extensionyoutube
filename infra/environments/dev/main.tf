@@ -1,6 +1,6 @@
 #copia de local y no se cambia nada
 resource "aws_dynamodb_table" "jobs_table" {
-  name         = "extension-dynamo-jobs-local"
+  name         = "extension-dynamo-jobs-${var.environment}"
   billing_mode = "PAY_PER_REQUEST" # Mentalidad Serverless: solo pagas por lo que usas
   hash_key     = "jobId"         # Nuestra Partition Key (PK)
 
@@ -18,7 +18,7 @@ resource "aws_dynamodb_table" "jobs_table" {
 
 # 1. El Bunker S3 donde se suben los canales y playslits
 resource "aws_s3_bucket" "uploads_bucket" {
-  bucket = "extension-s3-uploads-local"
+  bucket = "extension-s3-uploads-${var.environment}"
 
   # En local, permitimos que se borre aunque tenga archivos al hacer 'destroy'
   force_destroy = true
@@ -30,12 +30,12 @@ resource "aws_s3_bucket" "uploads_bucket" {
 
 # 2. La Cola de Mensajes Muertos (DLQ)
 resource "aws_sqs_queue" "jobs_dlq" {
-  name = "extension-sqs-dlq-local"
+  name = "extension-sqs-dlq-${var.environment}"
 }
 
 # 3. La Cola Principal (conectada a la DLQ)
 resource "aws_sqs_queue" "jobs_queue" {
-  name = "extension-sqs-work-local"
+  name = "extension-sqs-work-${var.environment}"
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.jobs_dlq.arn
@@ -48,7 +48,7 @@ resource "aws_sqs_queue" "jobs_queue" {
 
 # El "Contenedor" de la identidad
 resource "aws_iam_role" "worker_role" {
-  name = "extension-worker-role-local"
+  name = "extension-worker-role-${var.environment}"
 
   # Trust Policy: Permite que el servicio Lambda "asuma" este rol
   assume_role_policy = jsonencode({
@@ -65,7 +65,7 @@ resource "aws_iam_role" "worker_role" {
 
 # Los "Poderes" del rol: Privilegio Mínimo
 resource "aws_iam_role_policy" "worker_permissions" {
-  name = "extension-worker-permissions-local"
+  name = "extension-worker-permissions-${var.environment}"
   role = aws_iam_role.worker_role.id # <--- Referencia actualizada
 
   policy = jsonencode({
@@ -134,7 +134,7 @@ data "archive_file" "lambda_zip" {
 # =============================================================================
 
 resource "aws_lambda_function" "worker_lambda" {
-  function_name    = "extension-worker-local"
+  function_name    = "extension-worker-${var.environment}"
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256 # Detecta cambios en el código
 
@@ -147,7 +147,7 @@ resource "aws_lambda_function" "worker_lambda" {
   # Terraform pasa los nombres reales de los recursos a la Lambda
   environment {
     variables = {
-      AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566"
+      AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566" : null
       S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
       DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
@@ -167,6 +167,8 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   enabled          = true
 }
 
+
+
 # 1. LA LLAVE MAESTRA
 resource "aws_kms_key" "token_key" {
   description             = "Llave para Refresh Tokens"
@@ -181,7 +183,8 @@ resource "aws_kms_key" "token_key" {
         Sid    = "Enable IAM User Permissions"
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::000000000000:root" # En AWS real sería tu cuenta
+           # USAMOS EL ID DINÁMICO EN LUGAR DE 000000000000
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
         }
         Action   = "kms:*"
         Resource = "*"
@@ -192,7 +195,7 @@ resource "aws_kms_key" "token_key" {
 
 # 2. EL ALIAS (La dirección postal amigable)
 resource "aws_kms_alias" "token_key_alias" {
-  name          = "alias/extension/token-key"
+  name          = "alias/extension/token-key-${var.environment}"
   target_key_id = aws_kms_key.token_key.key_id
 }
 
