@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "jobs_table" {
-  name         = "extension-dynamo-jobs-local"
+  name         = "extension-dynamo-jobs-${var.environment}"
   billing_mode = "PAY_PER_REQUEST" # Mentalidad Serverless: solo pagas por lo que usas
   hash_key     = "jobId"         # Nuestra Partition Key (PK)
 
@@ -17,7 +17,7 @@ resource "aws_dynamodb_table" "jobs_table" {
 
 # 1. El Bunker S3 donde se suben los canales y playslits
 resource "aws_s3_bucket" "uploads_bucket" {
-  bucket = "extension-s3-uploads-local"
+  bucket = "extension-s3-uploads-${var.environment}"
 
   # En local, permitimos que se borre aunque tenga archivos al hacer 'destroy'
   force_destroy = true
@@ -29,12 +29,12 @@ resource "aws_s3_bucket" "uploads_bucket" {
 
 # 2. La Cola de Mensajes Muertos (DLQ)
 resource "aws_sqs_queue" "jobs_dlq" {
-  name = "extension-sqs-dlq-local"
+  name = "extension-sqs-dlq-${var.environment}"
 }
 
 # 3. La Cola Principal (conectada a la DLQ)
 resource "aws_sqs_queue" "jobs_queue" {
-  name = "extension-sqs-work-local"
+  name = "extension-sqs-work-${var.environment}"
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.jobs_dlq.arn
@@ -47,7 +47,7 @@ resource "aws_sqs_queue" "jobs_queue" {
 
 # El "Contenedor" de la identidad
 resource "aws_iam_role" "worker_role" {
-  name = "extension-worker-role-local"
+  name = "extension-worker-role-${var.environment}"
 
   # Trust Policy: Permite que el servicio Lambda "asuma" este rol
   assume_role_policy = jsonencode({
@@ -64,7 +64,7 @@ resource "aws_iam_role" "worker_role" {
 
 # Los "Poderes" del rol: Privilegio Mínimo
 resource "aws_iam_role_policy" "worker_permissions" {
-  name = "extension-worker-permissions-local"
+  name = "extension-worker-permissions-${var.environment}"
   role = aws_iam_role.worker_role.id # <--- Referencia actualizada
 
   policy = jsonencode({
@@ -133,7 +133,7 @@ data "archive_file" "lambda_zip" {
 # =============================================================================
 
 resource "aws_lambda_function" "worker_lambda" {
-  function_name    = "extension-worker-local"
+  function_name    = "extension-worker-${var.environment}"
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256 # Detecta cambios en el código
 
