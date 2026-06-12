@@ -25,6 +25,7 @@ _override.tf.json
 # --- DOCKER & LOCALSTACK ---
 docker/localstack/volume/
 .localstack/
+enviroments/
 
 # --- SECRETOS & CONFIG (CRÍTICO) ---
 .env
