@@ -14,7 +14,7 @@ resource "aws_dynamodb_table" "jobs_table" {
 
   tags = {
     Project     = "Nocturne"
-    Environment = "Local"
+    Environment = var.environment
   }
 }
 
@@ -162,13 +162,15 @@ resource "aws_lambda_function" "worker_lambda" {
   # INYECCIÓN DE DEPENDENCIAS:
   # Terraform pasa los nombres reales de los recursos a la Lambda
   environment {
-    variables = {
-      AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566"
-      S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
-      DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
-      KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
-      SQS_QUEUE_URL    = aws_sqs_queue.jobs_queue.url # <--- NUEVA VARIABLE
-    }
+    variables = merge(
+      {
+        S3_BUCKET      = aws_s3_bucket.uploads_bucket.id
+        DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
+        KMS_KEY_ALIAS  = aws_kms_alias.token_key_alias.name
+        SQS_QUEUE_URL  = aws_sqs_queue.jobs_queue.url
+      },
+      var.use_localstack ? { AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566" } : {}
+    )
   }
 }
 
