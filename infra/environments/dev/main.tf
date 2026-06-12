@@ -147,7 +147,7 @@ resource "aws_lambda_function" "worker_lambda" {
   # Terraform pasa los nombres reales de los recursos a la Lambda
   environment {
     variables = {
-      AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566" : null
+      AWS_ENDPOINT_URL = "http://localhost.localstack.cloud:4566"
       S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
       DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
