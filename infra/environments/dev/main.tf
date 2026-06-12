@@ -1,3 +1,6 @@
+
+data "aws_caller_identity" "current" {}
+
 #copia de local y no se cambia nada
 resource "aws_dynamodb_table" "jobs_table" {
   name         = "extension-dynamo-jobs-${var.environment}"
