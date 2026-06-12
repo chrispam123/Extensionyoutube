@@ -99,7 +99,20 @@ resource "aws_iam_role_policy" "worker_permissions" {
         Resource = aws_kms_key.token_key.arn
       },
 
-      #ACTUALIZACIÓN DE PERMISOS (Añadir SQS SendMessage)
+      #Para que una Lambda procese mensajes de SQS, necesita un "kit" de tres permisos básicos,Antes de permitirte conectar una cola SQS a una Lambda, AWS realiza una   Validación de contrato
+
+       {
+        Sid      = "AllowSQSConsume"
+        Action   = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
+        ]
+        Effect   = "Allow"
+        Resource = aws_sqs_queue.jobs_queue.arn
+      },
+
+      #ACTUALIZACIÓN DE PERMISOS (Añadir SQS SendMessage SON DE AUTOINVOCACION)
       {
         Sid      = "AllowSQSReplay"
         Action   = ["sqs:SendMessage"]
