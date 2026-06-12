@@ -26,7 +26,7 @@ importa/exporta suscripciones de cualquier cuenta de usuario.
 
 ## Entornos
 - local: LocalStack + Terraform — funcional
-- dev: AWS real — pendiente
+- dev: AWS real — funcional (CI + CD + OIDC + Terraform state en S3)
 - prod: AWS real — pendiente
 
 ## Estructura
@@ -44,8 +44,10 @@ nocturne-backend/
 │   └── init-aws.sh             # DEPRECADO — pendiente eliminar
 ├── dist/                        # Artefactos Lambda ZIP
 ├── deploy.sh                    # Deploy manual LocalStack
+├── sync_secrets_aws.sh          # Sube secretos Google a SSM (dev)
 └── .github/workflows/
-    └── ci-validation.yml
+    ├── ci-validation.yml
+    └── cd-deploy.yml            # CD: build + Terraform apply en dev
 
 ## Naming de recursos
 - Convención: extension-{recurso}-{entorno}
@@ -85,9 +87,9 @@ Bala trazadora end-to-end funcional en local:
 4. Lambda procesa: RUNNING → lee S3 → DONE
 
 ## Pendiente
-- Workflow CD (deploy a dev/prod)
-- Infraestructura Terraform dev y prod
+- Infraestructura Terraform prod
 - API Gateway
 - Lógica real YouTube API
 - Edge cases en tests
 - Coverage en CI
+- Refactor: extraer módulo Terraform compartido (infra/modules)
