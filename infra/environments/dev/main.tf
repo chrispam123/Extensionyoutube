@@ -122,11 +122,11 @@ resource "aws_iam_role_policy" "worker_permissions" {
 
 # Terraform genera el ZIP por nosotros.
 # NOTA: Para que esto funcione, las dependencias deben estar en la carpeta dist/lambda
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../../../dist/lambda"
-  output_path = "${path.module}/../../../dist/worker.zip"
-}
+#data "archive_file" "lambda_zip" {
+# type        = "zip"
+#source_dir  = "${path.module}/../../../dist/lambda"
+#output_path = "${path.module}/../../../dist/worker.zip"
+#}
 
 # =============================================================================
 # 3. COMPUTACIÓN: LA FUNCIÓN LAMBDA WORKER DE MOMENTO
@@ -134,8 +134,8 @@ data "archive_file" "lambda_zip" {
 
 resource "aws_lambda_function" "worker_lambda" {
   function_name    = "extension-worker-${var.environment}"
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256 # Detecta cambios en el código
+  filename         = "${path.module}/../../../dist/worker.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../../dist/worker.zip")
 
   handler = "handler.lambda_handler"
   runtime = "python3.12"
@@ -293,16 +293,16 @@ resource "aws_iam_role_policy" "dispatcher_permissions" {
 
 # Generamos un ZIP específico para el Dispatcher
 # Nota: Crearemos la carpeta dist/dispatcher en el siguiente paso de Python
-data "archive_file" "dispatcher_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../../../dist/dispatcher"
-  output_path = "${path.module}/../../../dist/dispatcher.zip"
-}
+#data "archive_file" "dispatcher_zip" {
+# type        = "zip"
+# source_dir  = "${path.module}/../../../dist/dispatcher"
+#output_path = "${path.module}/../../../dist/dispatcher.zip"
+#}
 
 resource "aws_lambda_function" "dispatcher_lambda" {
   function_name    = "extension-dispatcher-${var.environment}"
-  filename         = data.archive_file.dispatcher_zip.output_path
-  source_code_hash = data.archive_file.dispatcher_zip.output_base64sha256
+  filename         = "${path.module}/../../../dist/dispatcher.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../../dist/dispatcher.zip")
 
   handler = "dispatcher.lambda_handler" # El archivo se llamará dispatcher.py
   runtime = "python3.12"
