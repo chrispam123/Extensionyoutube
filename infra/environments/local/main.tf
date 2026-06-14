@@ -296,11 +296,11 @@ resource "aws_iam_role_policy" "dispatcher_permissions" {
 
 # Generamos un ZIP específico para el Dispatcher
 # Nota: Crearemos la carpeta dist/dispatcher en el siguiente paso de Python
-data "archive_file" "dispatcher_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../../../dist/dispatcher"
-  output_path = "${path.module}/../../../dist/dispatcher.zip"
-}
+#data "archive_file" "dispatcher_zip" {
+# type        = "zip"
+# source_dir  = "${path.module}/../../../dist/dispatcher"
+# output_path = "${path.module}/../../../dist/dispatcher.zip"
+#3}
 
 resource "aws_lambda_function" "dispatcher_lambda" {
   function_name = "extension-dispatcher-${var.environment}"
