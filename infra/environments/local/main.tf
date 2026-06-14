@@ -1,3 +1,5 @@
+# El robot se mira al espejo para saber su ID de cuenta real
+data "aws_caller_identity" "current" {}
 resource "aws_dynamodb_table" "jobs_table" {
   name         = "extension-dynamo-jobs-${var.environment}"
   billing_mode = "PAY_PER_REQUEST" # Mentalidad Serverless: solo pagas por lo que usas
@@ -185,7 +187,9 @@ resource "aws_kms_key" "token_key" {
         Sid    = "Enable IAM User Permissions"
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::000000000000:root" # En AWS real sería tu cuenta
+          #AWS = "arn:aws:iam::000000000000:root" # En AWS real sería tu cuenta
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+
         }
         Action   = "kms:*"
         Resource = "*"
