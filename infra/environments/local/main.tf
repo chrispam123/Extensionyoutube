@@ -200,7 +200,7 @@ resource "aws_kms_key" "token_key" {
 
 # 2. EL ALIAS (La dirección postal amigable)
 resource "aws_kms_alias" "token_key_alias" {
-  name          = "alias/extension/token-key"
+  name          = "alias/extension/token-key-${var.environment}"
   target_key_id = aws_kms_key.token_key.key_id
 }
 
