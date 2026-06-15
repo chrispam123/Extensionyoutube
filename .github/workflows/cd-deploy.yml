@@ -39,6 +39,7 @@ jobs:
           # --- 1. PREPARAR CARPETAS ---
           mkdir -p dist/worker
           mkdir -p dist/dispatcher
+          mkdir -p dist/status
           # --- 3. CONSTRUIR WORKER ---
           poetry export -f requirements.txt --output dist/worker/requirements.txt
           pip install -r dist/worker/requirements.txt -t dist/worker/ --ignore-installed --quiet
@@ -53,7 +54,12 @@ jobs:
           cp src/dispatcher/dispatcher.py dist/dispatcher/
           cp -r src/shared dist/dispatcher/
           cd dist/dispatcher && zip -r ../dispatcher.zip . && cd ../..
-
+          # 4. Construir STATUS (El ligero)
+          # Solo necesita Powertools, no necesita httpx ni youtube logic PESARIA MENOS
+          pip install aws-lambda-powertools -t dist/status/ --quiet
+          cp src/status/status.py dist/status/
+          cp -r src/shared dist/status/
+          cd dist/status && zip -r ../status.zip . && cd ../..
       # --- PASO DE IDENTIDAD: ASUMIR ROL DE AWS ---
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
