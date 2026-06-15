@@ -394,6 +394,121 @@ resource "aws_lambda_event_source_mapping" "ingestion_trigger" {
   batch_size       = 1 # Procesamos de 1 en 1 para máxima trazabilidad
   enabled          = true
 }
+
+
+# =============================================================================
+# 10. LAMBDA-STATUS: ROL Y PERMISOS (SOLO LECTURA)
+# =============================================================================
+
+resource "aws_iam_role" "status_role" {
+  name = "extension-status-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "status_permissions" {
+  name = "extension-status-permissions-${var.environment}"
+  role = aws_iam_role.status_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowLogging"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Sid      = "AllowDynamoRead"
+        Action   = ["dynamodb:GetItem"] # <--- ÚNICO PODER: LEER UN ITEM
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.jobs_table.arn
+      }
+    ]
+  })
+}
+# =============================================================================
+# 11. CREACION STATUS: FUNCIÓN LAMBDA
+# =============================================================================
+
+resource "aws_lambda_function" "status_lambda" {
+  function_name    = "extension-status-${var.environment}"
+  filename         = "${path.module}/../../../dist/status.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../../dist/status.zip")
+
+  handler = "status.lambda_handler"
+  runtime = "python3.12"
+  timeout = 5 # Consultar DynamoDB es instantáneo
+  role    = aws_iam_role.status_role.arn
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
+    }
+  }
+}
+
+# =============================================================================
+# 12. PUERTA DE ENTRADA: API GATEWAY (HTTP API)
+# =============================================================================
+
+resource "aws_apigatewayv2_api" "http_api" {
+  name          = "extension-api-${var.environment}"
+  protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = ["*"] # En producción pondríamos el ID de la extensión
+    allow_methods = ["GET", "POST", "OPTIONS"]
+    allow_headers = ["content-type", "authorization"]
+  }
+}
+
+resource "aws_apigatewayv2_stage" "api_stage" {
+  api_id      = aws_apigatewayv2_api.http_api.id
+  name        = var.environment
+  auto_deploy = true
+}
+
+# INTEGRACIÓN: Conecta el API con la Lambda
+resource "aws_apigatewayv2_integration" "status_integration" {
+  api_id           = aws_apigatewayv2_api.http_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.status_lambda.invoke_arn
+}
+
+# RUTA: GET /status/{jobId}
+resource "aws_apigatewayv2_route" "status_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "GET /status/{jobId}"
+  target    = "integrations/${aws_apigatewayv2_integration.status_integration.id}"
+}
+
+# PERMISO: Permite que el API Gateway llame a la Lambda STATUS
+resource "aws_lambda_permission" "api_gw" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.status_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+}
+
+# OUTPUT: La URL que usará el React
+output "api_url" {
+  value = "${aws_apigatewayv2_api.http_api.api_endpoint}/${aws_apigatewayv2_stage.api_stage.name}"
+}
+
+
+
 # =============================================================================
 # OUTPUTS: La "Factura" de la Infraestructura con esto se actualiza el .env
 # =============================================================================

@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - develop
-      - 'feature/*'  # <--- Esto activa el CI en tus ramas de trabajo
+      - "feature/*" # <--- Esto activa el CI en tus ramas de trabajo
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   validate:
@@ -19,7 +19,7 @@ jobs:
       AWS_SESSION_TOKEN: testing
       AWS_DEFAULT_REGION: us-east-1
       AWS_REGION: us-east-1
-    # -----------------------------------------
+      # -----------------------------------------
       PYTHONPATH: src # <--- ESTA ES LA LLAVE
 
     steps:
@@ -29,7 +29,7 @@ jobs:
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
