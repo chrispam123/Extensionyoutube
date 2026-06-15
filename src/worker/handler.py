@@ -6,15 +6,17 @@ Component: Worker Lambda (YouTube Integration + Relay Pattern)
 
 import json
 import os
+
 import boto3
-from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger, Tracer
+
+# from botocore.exceptions import ClientError
+# from shared.exceptions import InvalidTokenError, QuotaExceededError
+from shared.google_auth import refresh_access_token
 
 # Importaciones de nuestra capa Shared
 from shared.security import decrypt_token
-from shared.google_auth import refresh_access_token
 from shared.youtube_client import YouTubeClient
-from shared.exceptions import QuotaExceededError, InvalidTokenError
 
 # 1. Configuración de Observabilidad
 logger = Logger()
@@ -25,7 +27,10 @@ tracer = Tracer()
 cached_secrets = {"client_id": None, "client_secret": None}
 
 # 3. Inicialización de Clientes AWS
-ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
+# PRINCIPIO DE DEFENSA: Capturamos la variable y la limpiamos inmediatamente
+RAW_ENDPOINT = os.getenv("AWS_ENDPOINT_URL")
+# Si la variable no existe, es una cadena vacía o solo espacios, forzamos None
+ENDPOINT_URL = RAW_ENDPOINT if RAW_ENDPOINT and RAW_ENDPOINT.strip() else None
 # Usamos el DNS de LocalStack si está presente, sino el oficial de AWS
 s3 = boto3.client("s3", endpoint_url=ENDPOINT_URL)
 dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
