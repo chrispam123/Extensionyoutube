@@ -42,3 +42,4 @@ secrets.json
 #excepciones
 CHEATSHEET.md
 job-real-001.json
+docker/localstack/response.json
