@@ -13,3 +13,7 @@ variable "environment" {
   description = "Nombre del entorno (local, develop, prod)"
   type        = string
 }
+variable "extension_id" {
+  description = "ID único de la extensión de Chrome (obtenido de la tienda)"
+  type        = string
+}

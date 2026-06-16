@@ -93,6 +93,7 @@ jobs:
           TF_VAR_aws_region: "us-east-1"
           TF_VAR_use_localstack: "false"
           TF_VAR_environment: "develop" # <--- INYECCIÓN DE ENTORNO
+          TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp" # <--- INYECCIÓN DEL ID
         # --------------------------------------
         run: |
           terraform init
