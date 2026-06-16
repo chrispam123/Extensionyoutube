@@ -100,3 +100,39 @@ jobs:
           # Añadimos -input=false para que Terraform falle rápido si falta algo
           # en lugar de quedarse colgado preguntando.
           terraform apply -auto-approve -input=false
+build-frontend:
+    needs: deploy-dev # Solo corre si la infraestructura se desplegó bien
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Usa la versión que tengas en tu Mint
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: npm install
+
+      # --- PASO NINJA: INYECCIÓN DINÁMICA ---
+      # Usamos la URL que Terraform guardó en el estado para 'quemarla' en el React
+      - name: Inject API URL
+        working-directory: frontend
+        run: |
+          # Aquí podrías usar el CLI de Terraform para sacar el output,
+          # pero por ahora lo haremos simple con una variable de GitHub o hardcoded
+          # para validar el flujo.
+          sed -i 's|__API_URL_PLACEHOLDER__|https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop|g' .env.develop
+
+      - name: Build Extension
+        working-directory: frontend
+        run: npm run build
+
+      # --- PASO FINAL: CREAR EL ZIP DESCARGABLE ---
+      - name: Upload Extension Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-extension-dev
+          path: frontend/dist/
