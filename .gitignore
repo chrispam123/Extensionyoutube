@@ -29,7 +29,7 @@ enviroments/
 
 # --- SECRETOS & CONFIG (CRÍTICO) ---
 .env
-.env.*
+
 *.pem
 *.key
 secrets.json
