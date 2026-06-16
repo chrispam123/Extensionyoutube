@@ -44,6 +44,21 @@ resource "aws_sqs_queue" "jobs_queue" {
     maxReceiveCount     = 3
   })
 }
+
+#Permites que esta extensión te suba un archivo?".
+# Si S3 no tiene una política de CORS, bloqueará la subida aunque la URL sea válida.
+resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT"] # Solo permitimos subidas
+    allowed_origins = ["chrome-extension://${var.extension_id}"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # =============================================================================
 # 1. SEGURIDAD: ROL DE IAM PARA LA LAMBDA
 # =============================================================================
@@ -459,7 +474,7 @@ resource "aws_lambda_function" "status_lambda" {
 }
 
 # =============================================================================
-# 12. PUERTA DE ENTRADA: API GATEWAY (HTTP API)
+# 12. PUERTA DE ENTRADA: API GATEWAY (HTTP API) LA DE SIEMPRE DE AWS APIGATEWAY
 # =============================================================================
 
 resource "aws_apigatewayv2_api" "http_api" {
@@ -467,7 +482,8 @@ resource "aws_apigatewayv2_api" "http_api" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["*"] # En producción pondríamos el ID de la extensión
+    # Solo permitimos a TU extensión oficial ID DE LA TIENDA CHROME
+    allow_origins = ["chrome-extension://${var.extension_id}"]
     allow_methods = ["GET", "POST", "OPTIONS"]
     allow_headers = ["content-type", "authorization"]
   }
