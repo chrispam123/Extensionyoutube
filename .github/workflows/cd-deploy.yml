@@ -2,17 +2,17 @@ name: CD Deployment (Dev)
 
 on:
   push:
-    branches: [develop] # Se dispara al hacer merge o push a develop
+    branches: [develop]
 
 permissions:
-  id-token: write # Obligatorio para OIDC
-  contents: read # Obligatorio para leer el código
+  id-token: write
+  contents: read
 
 jobs:
+  # --- TRABAJO 1: INFRAESTRUCTURA Y BACKEND ---
   deploy-dev:
     runs-on: ubuntu-latest
-    environment: development # Conecta con el búnker de secretos 'development'
-
+    environment: development
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -27,81 +27,66 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
-        # --- NUEVO PASO: INSTALAR EL PLUGIN DE EXPORTACIÓN ---
+
       - name: Install Poetry Export Plugin
         run: poetry self add poetry-plugin-export
-      # ----------------------------------------------------
 
-      # --- PASO CRÍTICO: CONSTRUCCIÓN DEL ARTEFACTO ---
-      # Replicamos exactamente lo que hacías en tu Linux Mint
       - name: Build Lambda Artifacts
         run: |
-          # --- 1. PREPARAR CARPETAS ---
-          mkdir -p dist/worker
-          mkdir -p dist/dispatcher
-          mkdir -p dist/status
-          mkdir -p dist/upload
+          # 1. Preparar carpetas
+          rm -rf dist/
+          mkdir -p dist/worker dist/dispatcher dist/status dist/upload
 
-          # --- 3. CONSTRUIR WORKER ---
-          poetry export -f requirements.txt --output dist/worker/requirements.txt
-          pip install -r dist/worker/requirements.txt -t dist/worker/ --ignore-installed --quiet
+          # 2. Generar manifiesto de dependencias
+          poetry export -f requirements.txt --output dist/requirements.txt
+
+          # 3. Construir WORKER
+          pip install -r dist/requirements.txt -t dist/worker/ --ignore-installed --quiet
           cp src/worker/handler.py dist/worker/
           cp -r src/shared dist/worker/
           cd dist/worker && zip -r ../worker.zip . && cd ../..
 
-          # --- 3. CONSTRUIR DISPATCHER ---
-          # Usamos el mismo requirements que el Worker para asegurar paridad de versiones
-          # (Aunque sea un poco más pesado, ganamos en SEGURIDAD y DETERMINISMO)
-          pip install -r dist/worker/requirements.txt -t dist/dispatcher/ --ignore-installed --quiet
+          # 4. Construir DISPATCHER
+          pip install -r dist/requirements.txt -t dist/dispatcher/ --ignore-installed --quiet
           cp src/dispatcher/dispatcher.py dist/dispatcher/
           cp -r src/shared dist/dispatcher/
           cd dist/dispatcher && zip -r ../dispatcher.zip . && cd ../..
-          # 4. Construir STATUS (El ligero)
-          # Solo necesita Powertools, no necesita httpx ni youtube logic PESARIA MENOS
-          pip install aws-lambda-powertools -t dist/status/ --quiet
+
+          # 5. Construir STATUS
+          pip install aws-lambda-powertools aws-xray-sdk -t dist/status/ --quiet
           cp src/status/status.py dist/status/
           cp -r src/shared dist/status/
           cd dist/status && zip -r ../status.zip . && cd ../..
-          #--- 4 CONSTRUIR LAMBDA UPLOAD
-          # La Lambda de Upload es ligera, solo necesita Powertools
-          pip install aws-lambda-powertools -t dist/upload/ --quiet
+
+          # 6. Construir UPLOAD
+          pip install aws-lambda-powertools aws-xray-sdk -t dist/upload/ --quiet
           cp src/upload/upload.py dist/upload/
           cp -r src/shared dist/upload/
-          cd dist/upload && zip -r ../upload.zip . > /dev/null && cd ../..
-      # --- PASO DE IDENTIDAD: ASUMIR ROL DE AWS ---
+          cd dist/upload && zip -r ../upload.zip . && cd ../..
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      # --- PASO DE INFRAESTRUCTURA: TERRAFORM ---
       - name: Terraform Setup
         uses: hashicorp/setup-terraform@v3
-      # --- PASO DE DIAGNÓSTICO ---
-      - name: List files for debugging
-        run: |
-          echo "📍 Directorio actual:"
-          pwd
-          echo "📂 Contenido del repositorio:"
-          ls -R
-      # ---------------------------
+
       - name: Terraform Init & Apply
         working-directory: infra/environments/dev
-        # --- AQUÍ INYECTAMOS LAS RESPUESTAS ---
         env:
           TF_VAR_aws_region: "us-east-1"
           TF_VAR_use_localstack: "false"
-          TF_VAR_environment: "develop" # <--- INYECCIÓN DE ENTORNO
-          TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp" # <--- INYECCIÓN DEL ID
-        # --------------------------------------
+          TF_VAR_environment: "develop"
+          TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp"
         run: |
           terraform init
-          # Añadimos -input=false para que Terraform falle rápido si falta algo
-          # en lugar de quedarse colgado preguntando.
           terraform apply -auto-approve -input=false
-build-frontend:
-    needs: deploy-dev # Solo corre si la infraestructura se desplegó bien
+
+  # --- TRABAJO 2: COMPILACIÓN DEL FRONTEND ---
+  build-frontend:
+    needs: deploy-dev # <--- PRINCIPIO DE DEPENDENCIA: Solo si el backend está OK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -110,27 +95,24 @@ build-frontend:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Usa la versión que tengas en tu Mint
+          node-version: '20'
 
       - name: Install Dependencies
         working-directory: frontend
         run: npm install
 
-      # --- PASO NINJA: INYECCIÓN DINÁMICA ---
-      # Usamos la URL que Terraform guardó en el estado para 'quemarla' en el React
       - name: Inject API URL
         working-directory: frontend
         run: |
-          # Aquí podrías usar el CLI de Terraform para sacar el output,
-          # pero por ahora lo haremos simple con una variable de GitHub o hardcoded
-          # para validar el flujo.
-          sed -i 's|__API_URL_PLACEHOLDER__|https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop|g' .env.develop
+          # Usamos .env.production porque Vite lo usa por defecto en 'build'
+          # Si el archivo no existe, lo creamos al vuelo
+          echo "VITE_API_URL=__API_URL_PLACEHOLDER__" > .env.production
+          sed -i 's|__API_URL_PLACEHOLDER__|https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop|g' .env.production
 
       - name: Build Extension
         working-directory: frontend
         run: npm run build
 
-      # --- PASO FINAL: CREAR EL ZIP DESCARGABLE ---
       - name: Upload Extension Artifact
         uses: actions/upload-artifact@v4
         with:
