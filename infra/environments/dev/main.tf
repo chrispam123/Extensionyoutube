@@ -469,6 +469,8 @@ resource "aws_lambda_function" "status_lambda" {
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
+      # AQUÍ CONECTAMOS EL PUENTE pra python:
+      EXTENSION_ID = var.extension_id
     }
   }
 }
@@ -481,12 +483,12 @@ resource "aws_apigatewayv2_api" "http_api" {
   name          = "extension-api-${var.environment}"
   protocol_type = "HTTP"
 
-  cors_configuration {
-    # Solo permitimos a TU extensión oficial ID DE LA TIENDA CHROME
-    allow_origins = ["chrome-extension://${var.extension_id}"]
-    allow_methods = ["GET", "POST", "OPTIONS"]
-    allow_headers = ["content-type", "authorization"]
-  }
+  #cors_configuration {
+  # Solo permitimos a TU extensión oficial ID DE LA TIENDA CHROME
+  #allow_origins = ["chrome-extension://${var.extension_id}"]no deja apigateway httpv2
+  # allow_methods = ["GET", "POST", "OPTIONS"]
+  # allow_headers = ["content-type", "authorization"]
+  #}
 }
 
 resource "aws_apigatewayv2_stage" "api_stage" {
@@ -594,6 +596,8 @@ resource "aws_lambda_function" "upload_lambda" {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
       S3_BUCKET      = aws_s3_bucket.uploads_bucket.id
       SQS_QUEUE_URL  = aws_sqs_queue.jobs_queue.url # <--- NUEVA VARIABLE en la exportacion el mensaje
+      # AQUÍ CONECTAMOS EL PUENTE:
+      EXTENSION_ID = var.extension_id
     }
   }
 }

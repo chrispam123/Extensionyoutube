@@ -2,7 +2,6 @@
 """
 Project: Nocturne Backend
 Component: Initiator (Upload) Lambda
-Purpose: Create Job in DynamoDB and either provide S3 URL (Import) or trigger SQS (Export).
 """
 
 import json
@@ -12,6 +11,9 @@ import uuid
 import boto3
 from aws_lambda_powertools import Logger, Tracer
 from botocore.config import Config
+
+# IMPORTANTE: Capa compartida para consistencia en la API
+from shared.responses import cors_response, get_cors_headers
 
 logger = Logger()
 tracer = Tracer()
@@ -31,31 +33,32 @@ sqs = boto3.client("sqs", endpoint_url=ENDPOINT_URL)
 @logger.inject_lambda_context
 @tracer.capture_lambda_handler
 def lambda_handler(event, context):
+    # --- BLOQUE DE SEGURIDAD: MANEJO DE PREFLIGHT (OPTIONS) ---
+    method = event.get("requestContext", {}).get("http", {}).get("method")
+    if method == "OPTIONS":
+        return {"statusCode": 200, "headers": get_cors_headers()}
+
+    # --- LÓGICA DE NEGOCIO ---
     table_name = os.getenv("DYNAMODB_TABLE")
     bucket_name = os.getenv("S3_BUCKET")
     work_queue_url = os.getenv("SQS_QUEUE_URL")
     table = dynamo.Table(table_name)
 
     try:
-        # 2. PARSEO DE ENTRADA
         body = json.loads(event.get("body", "{}"))
         user_id = body.get("userId")
-        job_type = body.get("type", "IMPORT").upper()  # IMPORT o EXPORT
+        job_type = body.get("type", "IMPORT").upper()
 
         if not user_id:
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "userId es obligatorio"}),
-            }
+            return cors_response(400, {"error": "userId es obligatorio"})
 
-        # 3. GENERACIÓN DE IDENTIDAD
+        # 2. GENERACIÓN DE IDENTIDAD Y ESTADO INICIAL
         job_id = str(uuid.uuid4())
-        # El estado inicial depende del tipo de trabajo
         initial_status = "INITIALIZING" if job_type == "IMPORT" else "PENDING"
 
-        logger.info(f"Creando Job {job_id} de tipo {job_type} para usuario {user_id}")
+        logger.info(f"Iniciando Job {job_id} ({job_type}) para {user_id}")
 
-        # 4. REGISTRO EN DYNAMODB (Primero el mapa)
+        # 3. REGISTRO EN DYNAMODB (El Notario)
         table.put_item(
             Item={
                 "jobId": job_id,
@@ -72,11 +75,11 @@ def lambda_handler(event, context):
             }
         )
 
-        # 5. BIFURCACIÓN DE LÓGICA
-        response_body = {"jobId": job_id, "type": job_type}
+        # 4. BIFURCACIÓN DE FLUJO
+        response_data = {"jobId": job_id, "type": job_type}
 
         if job_type == "IMPORT":
-            # CASO IMPORTACIÓN: Generar URL para que el usuario suba el archivo
+            # Generar contrato de subida a S3
             s3_key = f"uploads/{user_id}/{job_id}.json"
             upload_url = s3.generate_presigned_url(
                 ClientMethod="put_object",
@@ -87,27 +90,16 @@ def lambda_handler(event, context):
                 },
                 ExpiresIn=300,
             )
-            response_body["uploadUrl"] = upload_url
-            logger.info(f"Presigned URL generada para Job {job_id}")
-
+            response_data["uploadUrl"] = upload_url
         else:
-            # CASO EXPORTACIÓN: Avisar al Worker directamente
+            # Iniciar exportación directa vía SQS
             sqs.send_message(
                 QueueUrl=work_queue_url,
                 MessageBody=json.dumps({"jobId": job_id, "userId": user_id}),
             )
-            logger.info(f"Mensaje de exportación enviado a SQS para Job {job_id}")
 
-        # 6. RESPUESTA EXITOSA
-        return {
-            "statusCode": 201,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            "body": json.dumps(response_body),
-        }
+        return cors_response(201, response_data)
 
     except Exception as e:
-        logger.exception(f"Fallo al iniciar Job")
-        return {"statusCode": 500, "body": json.dumps({"error": "Error interno"})}
+        logger.exception(f"Error al crear Job")
+        return cors_response(500, {"error": "No se pudo procesar la solicitud"})
