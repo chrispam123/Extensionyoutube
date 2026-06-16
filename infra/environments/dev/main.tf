@@ -502,6 +502,111 @@ resource "aws_lambda_permission" "api_gw" {
   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }
 
+
+
+# =============================================================================
+# 13. UPLOAD: ROL Y PERMISOS LAMBDA UPLOAD
+# =============================================================================
+
+resource "aws_iam_role" "upload_role" {
+  name = "extension-upload-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "upload_permissions" {
+  name = "extension-upload-permissions-${var.environment}"
+  role = aws_iam_role.upload_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowLogging"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Sid      = "AllowDynamoCreateJob"
+        Action   = ["dynamodb:PutItem"]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.jobs_table.arn
+      },
+      {
+        Sid      = "AllowS3Presign"
+        Action   = ["s3:PutObject"]
+        Effect   = "Allow"
+        Resource = "${aws_s3_bucket.uploads_bucket.arn}/uploads/*"
+      },
+      # --- NUEVO: PERMISO PARA INICIAR EXPORTACIONES ---ENVIAR A SQS en EXPORTACION
+      {
+        Sid      = "AllowSQSWorkSend"
+        Action   = ["sqs:SendMessage"]
+        Effect   = "Allow"
+        Resource = aws_sqs_queue.jobs_queue.arn
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# 14. UPLOAD: FUNCIÓN LAMBDA Y RUTA API
+# =============================================================================
+
+resource "aws_lambda_function" "upload_lambda" {
+  function_name    = "extension-upload-${var.environment}"
+  filename         = "${path.module}/../../../dist/upload.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../../dist/upload.zip")
+
+  handler = "upload.lambda_handler"
+  runtime = "python3.12"
+  timeout = 10
+  role    = aws_iam_role.upload_role.arn
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
+      S3_BUCKET      = aws_s3_bucket.uploads_bucket.id
+      SQS_QUEUE_URL  = aws_sqs_queue.jobs_queue.url # <--- NUEVA VARIABLE en la exportacion el mensaje
+    }
+  }
+}
+
+# INTEGRACIÓN API GATEWAY: POST /jobs con LAMBDA UPLOAD
+resource "aws_apigatewayv2_integration" "upload_integration" {
+  api_id           = aws_apigatewayv2_api.http_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.upload_lambda.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "upload_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "POST /jobs"
+  target    = "integrations/${aws_apigatewayv2_integration.upload_integration.id}"
+}
+
+# PERMISO: API Gateway -> Upload Lambda
+resource "aws_lambda_permission" "api_gw_upload" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.upload_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+}
+
+
+
+
 # OUTPUT: La URL que usará el React
 output "api_url" {
   value = "${aws_apigatewayv2_api.http_api.api_endpoint}/${aws_apigatewayv2_stage.api_stage.name}"

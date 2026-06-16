@@ -40,6 +40,8 @@ jobs:
           mkdir -p dist/worker
           mkdir -p dist/dispatcher
           mkdir -p dist/status
+          mkdir -p dist/upload
+
           # --- 3. CONSTRUIR WORKER ---
           poetry export -f requirements.txt --output dist/worker/requirements.txt
           pip install -r dist/worker/requirements.txt -t dist/worker/ --ignore-installed --quiet
@@ -60,6 +62,12 @@ jobs:
           cp src/status/status.py dist/status/
           cp -r src/shared dist/status/
           cd dist/status && zip -r ../status.zip . && cd ../..
+          #--- 4 CONSTRUIR LAMBDA UPLOAD
+          # La Lambda de Upload es ligera, solo necesita Powertools
+          pip install aws-lambda-powertools -t dist/upload/ --quiet
+          cp src/upload/upload.py dist/upload/
+          cp -r src/shared dist/upload/
+          cd dist/upload && zip -r ../upload.zip . > /dev/null && cd ../..
       # --- PASO DE IDENTIDAD: ASUMIR ROL DE AWS ---
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
