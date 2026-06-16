@@ -67,9 +67,11 @@ def lambda_handler(event, context):
                 "status": initial_status,
                 "doneCount": 0,
                 "totalItems": 0,
-                "createdAt": int(context.aws_request_id.split("-")[0], 16)
-                if not ENDPOINT_URL
-                else 123456789,
+                "createdAt": (
+                    int(context.aws_request_id.split("-")[0], 16)
+                    if not ENDPOINT_URL
+                    else 123456789
+                ),
             }
         )
 
