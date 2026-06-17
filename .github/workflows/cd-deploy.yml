@@ -106,8 +106,8 @@ jobs:
         run: |
           # Usamos .env.develop porque Vite lo usa por defecto en 'build'
           # Si el archivo no existe, lo creamos al vuelo
-          echo "VITE_API_URL=__API_URL_PLACEHOLDER__" > .env.develop
-          sed -i 's|__API_URL_PLACEHOLDER__|https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop|g' .env.develop
+          echo "VITE_API_URL=__API_URL_PLACEHOLDER__" > .env.production
+          sed -i 's|__API_URL_PLACEHOLDER__|https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop|g' .env.production
 
       - name: Build Extension
         working-directory: frontend
