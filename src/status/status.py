@@ -36,18 +36,24 @@ def lambda_handler(event, context):
 
     path_params = event.get("pathParameters", {})
     job_id = path_params.get("jobId")
-
+    logger.info(f"🔍 Consulta de estado recibida para el Job: {job_id}")  # <--- NUEVO
     if not job_id:
         return cors_response(400, {"error": "Falta el parámetro jobId"})
 
     try:
+        logger.info(f"📡 Accediendo a DynamoDB para leer el Job {job_id}")  # <--- NUEVO
         response = table.get_item(Key={"jobId": job_id})
         item = response.get("Item")
 
         if not item:
             # Principio de Veracidad HTTP
+            logger.warning(
+                f"⚠️ El Job {job_id} no existe en la base de datos"
+            )  # <--- NUEVO
             return cors_response(404, {"error": f"Job {job_id} no encontrado"})
-
+        logger.info(
+            f"✅ Job {job_id} encontrado. Estado actual: {item.get('status')}"
+        )  # <--- NUEVO
         # 3. CONTRATO DE RESPUESTA (Filtrado de seguridad)
         data = {
             "jobId": item.get("jobId"),
