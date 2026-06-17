@@ -60,7 +60,7 @@ resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
 }
 
 # =============================================================================
-# 1. SEGURIDAD: ROL DE IAM PARA LA LAMBDA
+# 1. SEGURIDAD: ROL DE IAM PARA LA LAMBDA WORKER
 # =============================================================================
 
 # El "Contenedor" de la identidad
@@ -147,7 +147,7 @@ resource "aws_iam_role_policy" "worker_permissions" {
 #}
 
 # =============================================================================
-# 3. COMPUTACIÓN: LA FUNCIÓN LAMBDA WORKER DE MOMENTO
+# 3. COMPUTACIÓN: LA FUNCIÓN LAMBDA WORKER CREACION
 # =============================================================================
 
 resource "aws_lambda_function" "worker_lambda" {
@@ -159,7 +159,9 @@ resource "aws_lambda_function" "worker_lambda" {
   runtime = "python3.12"
   timeout = 30
   role    = aws_iam_role.worker_role.arn # <--- Referencia actualizada
-
+  tracing_config {
+    mode = "Active"
+  }
   # INYECCIÓN DE DEPENDENCIAS:
   # Terraform pasa los nombres reales de los recursos a la Lambda
   environment {
@@ -176,7 +178,7 @@ resource "aws_lambda_function" "worker_lambda" {
 
 
 # =============================================================================
-# 4. EVENTOS: CONEXIÓN SQS -> LAMBDA (TRIGGER)
+# 4. EVENTOS: CONEXIÓN SQS -> LAMBDA WORKER (TRIGGER)
 # =============================================================================
 
 resource "aws_lambda_event_source_mapping" "sqs_trigger" {
@@ -186,7 +188,7 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   enabled          = true
 }
 
-# 1. LA LLAVE MAESTRA
+# 1. LA LLAVE MAESTRA KMS
 resource "aws_kms_key" "token_key" {
   description             = "Llave para Refresh Tokens"
   deletion_window_in_days = 7
@@ -328,7 +330,9 @@ resource "aws_lambda_function" "dispatcher_lambda" {
   runtime = "python3.12"
   timeout = 10 # El Dispatcher debe ser rápido
   role    = aws_iam_role.dispatcher_role.arn
-
+  tracing_config {
+    mode = "Active"
+  }
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
@@ -465,7 +469,9 @@ resource "aws_lambda_function" "status_lambda" {
   runtime = "python3.12"
   timeout = 5 # Consultar DynamoDB es instantáneo
   role    = aws_iam_role.status_role.arn
-
+  tracing_config {
+    mode = "Active"
+  }
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
@@ -590,7 +596,9 @@ resource "aws_lambda_function" "upload_lambda" {
   runtime = "python3.12"
   timeout = 10
   role    = aws_iam_role.upload_role.arn
-
+  tracing_config {
+    mode = "Active"
+  }
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
@@ -624,7 +632,28 @@ resource "aws_lambda_permission" "api_gw_upload" {
   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }
 
+#Xray no es un recurso es un servicio asi se uitliza
+# Adjuntar política de X-Ray al rol de lambda Status
+resource "aws_iam_role_policy_attachment" "status_xray" {
+  role       = aws_iam_role.status_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
 
+# Repite esto para worker_role
+resource "aws_iam_role_policy_attachment" "worker_xray" {
+  role       = aws_iam_role.worker_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
+# Repite esto para upload_role
+resource "aws_iam_role_policy_attachment" "upload_xray" {
+  role       = aws_iam_role.upload_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
+# Repite esto para dispatcher_role
+resource "aws_iam_role_policy_attachment" "dispatcher_xray" {
+  role       = aws_iam_role.dispatcher_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
 
 
 # OUTPUT: La URL que usará el React
