@@ -1,4 +1,5 @@
 import os
+import json  # <--- ESTA ES LA PIEZA QUE FALTA
 
 
 def get_cors_headers():
