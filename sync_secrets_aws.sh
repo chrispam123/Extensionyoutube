@@ -43,4 +43,13 @@ aws ssm put-parameter \
     --key-id "alias/extension/token-key-develop" \
     --overwrite
 
-echo "✅ Secretos sincronizados en AWS Cloud (Environment: develop)."
+# 5. Inyectar JWT Secret para la firma de pasaportes Nocturne
+echo "🔑 Subiendo JWT Secret..."
+aws ssm put-parameter \
+    --name "/extension/auth/jwt_secret" \
+    --value "$JWT_SECRET" \
+    --type "SecureString" \
+    --key-id "alias/extension/token-key-develop" \
+    --overwrite
+
+echo "✅ Todos los secretos (Google + JWT) sincronizados en AWS Cloud."

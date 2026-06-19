@@ -1,20 +1,49 @@
 # El robot se mira al espejo para saber su ID de cuenta real
 data "aws_caller_identity" "current" {}
-
+#si estás construyendo un sistema escalable. Aunque requiere más esfuerzo inicial para programar las consultas,
+# te da toda la flexibilidad necesaria para hacer búsquedas por estado gracias al GSI y te permite
+# hacer crecer tu base de datos sin crear tablas nuevas.
 resource "aws_dynamodb_table" "jobs_table" {
-  name         = "extension-dynamo-jobs-${var.environment}"
+  name         = "extension-dynamo-table-${var.environment}"
   billing_mode = "PAY_PER_REQUEST" # Mentalidad Serverless: solo pagas por lo que usas
-  hash_key     = "jobId"           # Nuestra Partition Key (PK)
+  #hash_key     = "jobId"           # Nuestra Partition Key (PK)
+  hash_key  = "PK" # Partition Key genérica
+  range_key = "SK" # Sort Key genérica
+  #attribute {
+  # name = "jobId"
+  # type = "S" # String
+  #}
+  attribute {
+    name = "PK"
+    type = "S"
+  }
 
   attribute {
-    name = "jobId"
-    type = "S" # String
+    name = "SK"
+    type = "S"
   }
+
+  # Mantenemos el GSI para el Resumer, pero ahora sobre el campo 'status'
+  # Nota: Para usar un GSI, el atributo debe estar definido arriba
+  attribute {
+    name = "status"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "StatusIndex"
+    hash_key        = "status"
+    range_key       = "PK"
+    projection_type = "ALL"
+  }
+
 
   tags = {
     Project     = "Nocturne"
-    Environment = "Local"
+    Environment = "develop"
   }
+
+
 }
 
 
@@ -170,7 +199,7 @@ resource "aws_lambda_function" "worker_lambda" {
       S3_BUCKET        = aws_s3_bucket.uploads_bucket.id
       DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
-      SQS_QUEUE_URL    = aws_sqs_queue.jobs_queue.url       # <--- NUEVA VARIABLE
+      SQS_QUEUE_URL    = aws_sqs_queue.jobs_queue.url       # <--- NUEVA VARIABLEs
     }
   }
 }
@@ -245,6 +274,20 @@ resource "aws_ssm_parameter" "google_client_secret" {
     ignore_changes = [value]
   }
 }
+
+#  SECRETO PARA FIRMAR JWT
+resource "aws_ssm_parameter" "jwt_secret" {
+  name  = "/extension/auth/jwt_secret"
+  type  = "String" # En prod será SecureString KMS
+  value = "REPLACE_ME_WITH_RANDOM_STRING"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+
+
 
 # =============================================================================
 # 7. DISPATCHER: ROL Y PERMISOS LAMBDA DISPATCHER
@@ -503,7 +546,7 @@ resource "aws_apigatewayv2_stage" "api_stage" {
   auto_deploy = true
 }
 
-# INTEGRACIÓN: Conecta el API con la Lambda
+# INTEGRACIÓN: Conecta el API con la Lambda status
 resource "aws_apigatewayv2_integration" "status_integration" {
   api_id           = aws_apigatewayv2_api.http_api.id
   integration_type = "AWS_PROXY"
@@ -631,6 +674,114 @@ resource "aws_lambda_permission" "api_gw_upload" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }
+
+# =============================================================================
+# 15. AUTH: ROL Y PERMISOS (EL ADUANERO) LAMBDA AUTH
+# =============================================================================
+
+resource "aws_iam_role" "auth_role" {
+  name = "extension-auth-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "auth_permissions" {
+  name = "extension-auth-permissions-${var.environment}"
+  role = aws_iam_role.auth_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowLogging"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Sid    = "AllowSSMReadSecrets"
+        Action = ["ssm:GetParameter"]
+        Effect = "Allow"
+        Resource = [
+          aws_ssm_parameter.google_client_id.arn,
+          aws_ssm_parameter.google_client_secret.arn,
+          aws_ssm_parameter.jwt_secret.arn
+        ]
+      },
+      {
+        Sid      = "AllowKMSEncrypt"
+        Action   = ["kms:Encrypt"] # <--- SOLO CIFRAR, NO DESCIFRAR cifra JWT que esta guardado en SSM
+        Effect   = "Allow"
+        Resource = aws_kms_key.token_key.arn
+      },
+      {
+        Sid      = "AllowDynamoUserManagement"
+        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.jobs_table.arn
+        # SEGURIDAD AVANZADA: Solo puede tocar items de usuario
+        Condition = {
+          "ForAllValues:StringLike" : {
+            "dynamodb:LeadingKeys" : ["USER#*"]
+          }
+        }
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# LAMBDA AUTH: FUNCIÓN Y RUTA
+# =============================================================================
+
+resource "aws_lambda_function" "auth_lambda" {
+  function_name    = "extension-auth-${var.environment}"
+  filename         = "${path.module}/../../../dist/auth.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../../dist/auth.zip")
+
+  handler = "auth_handler.lambda_handler"
+  runtime = "python3.12"
+  timeout = 15 # El intercambio con Google puede tardar LOGIN ES UN PROCESO ASINCRONO
+  role    = aws_iam_role.auth_role.arn
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
+      KMS_KEY_ALIAS  = aws_kms_alias.token_key_alias.name
+      EXTENSION_ID   = var.extension_id
+    }
+  }
+}
+
+# RUTA API GATEWAY: POST /auth/login  frontend---->apigateway--->lambdaAuth
+resource "aws_apigatewayv2_integration" "auth_integration" {
+  api_id           = aws_apigatewayv2_api.http_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.auth_lambda.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "auth_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "POST /auth/login"
+  target    = "integrations/${aws_apigatewayv2_integration.auth_integration.id}"
+}
+
+resource "aws_lambda_permission" "api_gw_auth" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.auth_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+}
+
+
 
 #Xray no es un recurso es un servicio asi se uitliza
 # Adjuntar política de X-Ray al rol de lambda Status
