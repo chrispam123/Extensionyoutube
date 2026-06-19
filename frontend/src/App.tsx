@@ -8,29 +8,29 @@ function App() {
   const API_URL = import.meta.env.VITE_API_URL
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-
-  // 1. Efecto para recuperar la sesión al abrir la extensión
+  // 1. Recuperar sesión al abrir la extensión
   useEffect(() => {
-    chrome.storage.local.get(['nocturne_token', 'nocturne_user'], (result) => {
+    // Corregido: Añadimos tipo al parámetro 'result' para evitar TS7006 (implicit any)
+    chrome.storage.local.get(['nocturne_token', 'nocturne_user'], (result: { [key: string]: any }) => {
       if (result.nocturne_token && result.nocturne_user) {
         setUserEmail(result.nocturne_user)
       }
-    })
+    });
   }, [])
 
   const loginWithGoogle = async () => {
     setLoading(true)
     try {
-      // A. Construir URL de Google OAuth
-      const manifest = chrome.runtime.getManifest()
+      // Corregido: Eliminada la variable 'manifest' (Ruff/TS6133: declared but never read)
       const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`
+
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${CLIENT_ID}&` +
         `response_type=code&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent('openid email https://www.googleapis.com/auth/youtube.readonly')}&` +
-        `access_type=offline&` +  //access_type=offline: CRÍTICO. Sin este parámetro, Google nunca enviará el refresh_token
-        `prompt=consent` // Forzamos consent para asegurar el refresh_token en pruebas
+        `access_type=offline&` +
+        `prompt=consent`
 
       // B. Abrir Popup de Google
       const responseUrl = await chrome.identity.launchWebAuthFlow({
@@ -38,9 +38,16 @@ function App() {
         interactive: true
       })
 
-      // C. Extraer el código de la URL de respuesta
-      const url = new URL(responseUrl!)
+      // Corregido: Validación de seguridad por si el usuario cierra el popup sin loguearse
+      if (!responseUrl) {
+        setLoading(false)
+        return
+      }
+
+      const url = new URL(responseUrl)
       const code = url.searchParams.get('code')
+
+      if (!code) throw new Error("No se recibió el código de autorización")
 
       // D. Enviar código a nuestro Backend (λ-Auth)
       const backendResponse = await fetch(`${API_URL}/auth/login`, {
@@ -52,7 +59,6 @@ function App() {
       const data = await backendResponse.json()
 
       if (backendResponse.ok) {
-        // E. Guardar sesión profesionalmente
         await chrome.storage.local.set({
           'nocturne_token': data.token,
           'nocturne_user': data.user
