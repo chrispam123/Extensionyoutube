@@ -112,8 +112,14 @@ jobs:
         run: |
           # Usamos .env.develop porque Vite lo usa por defecto en 'build'
           # Si el archivo no existe, lo creamos al vuelo
-          echo "VITE_API_URL=__API_URL_PLACEHOLDER__" > .env.production
-          sed -i 's|__API_URL_PLACEHOLDER__|https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop|g' .env.production
+          # 1. Creamos el archivo .env.production
+            echo "VITE_API_URL=https://pugu65me5k.execute-api.us-east-1.amazonaws.com/develop" > .env.production
+
+          # 2. Inyectamos tu ID real directamente (sin usar secretos de GitHub)
+          # Reemplazamos el placeholder por tu ID de Google real
+            echo "VITE_GOOGLE_CLIENT_ID=937802721244-24air8354ht1kato0dclih2vk9krpjh2.apps.googleusercontent.com" >> .env.production
+
+            echo "✅ Variables inyectadas directamente en el artefacto"
 
       - name: Build Extension
         working-directory: frontend

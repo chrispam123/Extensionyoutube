@@ -1,39 +1,94 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
-  const [status, setStatus] = useState<string>('Esperando...')
-  const API_URL = import.meta.env.VITE_API_URL;
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [loading, setLoading] = useState<boolean>(false)
 
-  const testConnection = async () => {
-    setStatus('Consultando...');
-    try {
-      // Intentamos consultar un jobId que no existe para ver el 404
-      // Pero esta vez desde el origen correcto (la extensión)
-      const response = await fetch(`${API_URL}/status/test-id-123`);
-      const data = await response.json();
+  const API_URL = import.meta.env.VITE_API_URL
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-      if (response.status === 404) {
-        setStatus('✅ Conexión Exitosa: El Backend respondió 404 (Correcto)');
-      } else {
-        setStatus(`🤔 Respuesta inesperada: ${response.status}`);
+
+  // 1. Efecto para recuperar la sesión al abrir la extensión
+  useEffect(() => {
+    chrome.storage.local.get(['nocturne_token', 'nocturne_user'], (result) => {
+      if (result.nocturne_token && result.nocturne_user) {
+        setUserEmail(result.nocturne_user)
       }
-      console.log('Datos recibidos:', data);
+    })
+  }, [])
+
+  const loginWithGoogle = async () => {
+    setLoading(true)
+    try {
+      // A. Construir URL de Google OAuth
+      const manifest = chrome.runtime.getManifest()
+      const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${CLIENT_ID}&` +
+        `response_type=code&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent('openid email https://www.googleapis.com/auth/youtube.readonly')}&` +
+        `access_type=offline&` +  //access_type=offline: CRÍTICO. Sin este parámetro, Google nunca enviará el refresh_token
+        `prompt=consent` // Forzamos consent para asegurar el refresh_token en pruebas
+
+      // B. Abrir Popup de Google
+      const responseUrl = await chrome.identity.launchWebAuthFlow({
+        url: authUrl,
+        interactive: true
+      })
+
+      // C. Extraer el código de la URL de respuesta
+      const url = new URL(responseUrl!)
+      const code = url.searchParams.get('code')
+
+      // D. Enviar código a nuestro Backend (λ-Auth)
+      const backendResponse = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      })
+
+      const data = await backendResponse.json()
+
+      if (backendResponse.ok) {
+        // E. Guardar sesión profesionalmente
+        await chrome.storage.local.set({
+          'nocturne_token': data.token,
+          'nocturne_user': data.user
+        })
+        setUserEmail(data.user)
+      } else {
+        alert("Error en el backend: " + data.error)
+      }
+
     } catch (error) {
-      console.error(error);
-      setStatus('❌ Error de CORS o Red. Revisa la consola.');
+      console.error("Fallo en login:", error)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const logout = () => {
+    chrome.storage.local.clear(() => {
+      setUserEmail(null)
+    })
   }
 
   return (
     <div className="App">
-      <h1>Nocturne QA Sensor</h1>
+      <h1>Nocturne Identity</h1>
       <div className="card">
-        <button onClick={testConnection}>
-          Probar Conexión con AWS
-        </button>
-        <p>Estado: {status}</p>
-        <small>URL: {API_URL}</small>
+        {userEmail ? (
+          <>
+            <p>Bienvenido: <strong>{userEmail}</strong></p>
+            <button onClick={logout}>Cerrar Sesión</button>
+          </>
+        ) : (
+          <button onClick={loginWithGoogle} disabled={loading}>
+            {loading ? 'Conectando...' : 'Conectar con Google'}
+          </button>
+        )}
       </div>
     </div>
   )

@@ -6,7 +6,7 @@
   "action": {
     "default_popup": "index.html"
   },
-  "permissions": ["storage"],
+  "permissions": ["storage", "identity"],
   "host_permissions": [
     "https://*.execute-api.us-east-1.amazonaws.com/*",
     "https://extension-s3-uploads-develop.s3.amazonaws.com/*"
