@@ -756,6 +756,8 @@ resource "aws_lambda_function" "auth_lambda" {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS  = aws_kms_alias.token_key_alias.name
       EXTENSION_ID   = var.extension_id
+      # ESTO ACTIVA LOS LOGS DE POWERTOOLS
+      POWERTOOLS_LOG_LEVEL = "INFO"
     }
   }
 }
