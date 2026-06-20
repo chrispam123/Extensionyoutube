@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+import base64  # Asegúrate de que este también esté si usas base64.b64encode
+import datetime  # <--- ESTA ES LA PIEZA QUE FALTA
 import json
 import os
 
 import boto3
 import httpx
 from aws_lambda_powertools import Logger, Tracer
-
 from shared.auth import create_nocturne_jwt
 from shared.responses import cors_response, get_cors_headers
 from shared.security import decrypt_token  # Aunque aquí usaremos encrypt
