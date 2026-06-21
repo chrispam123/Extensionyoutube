@@ -2,6 +2,7 @@
 import json
 import os
 import uuid
+import jwt
 import boto3
 from aws_lambda_powertools import Logger, Tracer
 from shared.responses import cors_response, get_cors_headers
