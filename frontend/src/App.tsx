@@ -1,99 +1,93 @@
+// src/App.tsx
 import { useState, useEffect } from 'react'
 import './App.css'
 
+// Definimos el contrato de datos para el Job para mantener la integridad de tipos
+interface JobStatus {
+  jobId: string;
+  status: string;
+  doneCount: number;
+  totalItems: number;
+}
+
 function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [job, setJob] = useState<JobStatus | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
 
-  const API_URL = import.meta.env.VITE_API_URL
-  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
-  // 1. Recuperar sesión al abrir la extensión
+  // 1. EFECTO DE SINCRONIZACIÓN: El Popup es un espejo del Storage
   useEffect(() => {
-    // Corregido: Añadimos tipo al parámetro 'result' para evitar TS7006 (implicit any)
-    chrome.storage.local.get(['nocturne_token', 'nocturne_user'], (result: { [key: string]: any }) => {
-      if (result.nocturne_token && result.nocturne_user) {
-        setUserEmail(result.nocturne_user)
-      }
+    // Carga inicial al abrir el popup
+    chrome.storage.local.get(['nocturne_user', 'last_job_status'], (result: { [key: string]: any }) => {
+      if (result.nocturne_user) setUserEmail(result.nocturne_user);
+      if (result.last_job_status) setJob(result.last_job_status as JobStatus);
     });
+
+    // Escucha en tiempo real: Si el Service Worker actualiza algo, React lo pinta
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.nocturne_user) {
+        setUserEmail(changes.nocturne_user.newValue as string);
+        setLoading(false); // Detenemos el loading si el usuario ya aparece
+      }
+      if (changes.last_job_status) {
+        setJob(changes.last_job_status.newValue as JobStatus);
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, [])
 
-  const loginWithGoogle = async () => {
-    setLoading(true)
-    try {
-      // Corregido: Eliminada la variable 'manifest' (Ruff/TS6133: declared but never read)
-      const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`
+  // 2. COMANDOS AL MOTOR (Delegación total al Service Worker)
+  const login = () => {
+    setLoading(true);
+    chrome.runtime.sendMessage({ action: "LOGIN" });
+  };
 
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${CLIENT_ID}&` +
-        `response_type=code&` +
-        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-        `scope=${encodeURIComponent('openid email https://www.googleapis.com/auth/youtube.readonly')}&` +
-        `access_type=offline&` +
-        `prompt=consent`
-
-      // B. Abrir Popup de Google
-      const responseUrl = await chrome.identity.launchWebAuthFlow({
-        url: authUrl,
-        interactive: true
-      })
-
-      // Corregido: Validación de seguridad por si el usuario cierra el popup sin loguearse
-      if (!responseUrl) {
-        setLoading(false)
-        return
-      }
-
-      const url = new URL(responseUrl)
-      const code = url.searchParams.get('code')
-
-      if (!code) throw new Error("No se recibió el código de autorización")
-
-      // D. Enviar código a nuestro Backend (λ-Auth)
-      const backendResponse = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
-      })
-
-      const data = await backendResponse.json()
-
-      if (backendResponse.ok) {
-        await chrome.storage.local.set({
-          'nocturne_token': data.token,
-          'nocturne_user': data.user
-        })
-        setUserEmail(data.user)
-      } else {
-        alert("Error en el backend: " + data.error)
-      }
-
-    } catch (error) {
-      console.error("Fallo en login:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const startExport = () => {
+    chrome.runtime.sendMessage({ action: "START_JOB", type: "EXPORT" });
+  };
 
   const logout = () => {
     chrome.storage.local.clear(() => {
-      setUserEmail(null)
-    })
-  }
+      setUserEmail(null);
+      setJob(null);
+    });
+  };
 
   return (
     <div className="App">
-      <h1>Nocturne Identity</h1>
+      <h1>Nocturne Dashboard</h1>
+
       <div className="card">
-        {userEmail ? (
-          <>
-            <p>Bienvenido: <strong>{userEmail}</strong></p>
-            <button onClick={logout}>Cerrar Sesión</button>
-          </>
+        {!userEmail ? (
+          <div className="login-section">
+            <button onClick={login} disabled={loading} className="btn-login">
+              {loading ? 'Abriendo Google...' : 'Conectar con Google'}
+            </button>
+            <p className="hint">Necesitamos permiso para leer tus suscripciones.</p>
+          </div>
         ) : (
-          <button onClick={loginWithGoogle} disabled={loading}>
-            {loading ? 'Conectando...' : 'Conectar con Google'}
-          </button>
+          <div className="user-section">
+            <p className="user-info">👤 <strong>{userEmail}</strong></p>
+
+            {/* LÓGICA DE ESTADO: El botón solo sale si no hay trabajo activo */}
+            {!job || job.status === 'DONE' || job.status === 'FAILED' ? (
+              <button onClick={startExport} className="btn-primary">
+                🚀 Exportar Suscripciones
+              </button>
+            ) : (
+              <div className="progress-container">
+                <div className="status-badge">{job.status}</div>
+                <p className="progress-text">Canales procesados: {job.doneCount}</p>
+                <div className="progress-bar-simulated"></div>
+              </div>
+            )}
+
+            <div className="footer-actions">
+              <button onClick={logout} className="btn-link">Cerrar Sesión</button>
+            </div>
+          </div>
         )}
       </div>
     </div>

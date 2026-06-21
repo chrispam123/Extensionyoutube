@@ -6,9 +6,18 @@
   "action": {
     "default_popup": "index.html"
   },
-  "permissions": ["storage", "identity"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "identity",
+    "alarms",
+    "notifications"
+  ],
   "host_permissions": [
-    "https://*.execute-api.us-east-1.amazonaws.com/*",
+    "https://*.execute-api.us-east-1.amazonaws.com/*"
     "https://extension-s3-uploads-develop.s3.amazonaws.com/*"
   ]
 }
