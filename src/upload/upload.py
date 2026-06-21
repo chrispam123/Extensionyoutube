@@ -1,105 +1,109 @@
 # -*- coding: utf-8 -*-
-"""
-Project: Nocturne Backend
-Component: Initiator (Upload) Lambda
-"""
-
 import json
 import os
 import uuid
-
 import boto3
 from aws_lambda_powertools import Logger, Tracer
-from botocore.config import Config
-
-# IMPORTANTE: Capa compartida para consistencia en la API
 from shared.responses import cors_response, get_cors_headers
+from shared.auth import decode_nocturne_jwt
 
 logger = Logger()
 tracer = Tracer()
 
-# 1. Inicialización de Clientes (Warm Start)
-RAW_ENDPOINT = os.getenv("AWS_ENDPOINT_URL")
-ENDPOINT_URL = RAW_ENDPOINT if RAW_ENDPOINT and RAW_ENDPOINT.strip() else None
+# Clientes AWS (Warm Start)
+ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
+if not ENDPOINT_URL or not ENDPOINT_URL.strip():
+    ENDPOINT_URL = None
 
-# Configuración para S3 Presigned URLs (Path style para LocalStack)
-s3_config = Config(s3={"addressing_style": "path"}) if ENDPOINT_URL else Config()
-
-s3 = boto3.client("s3", endpoint_url=ENDPOINT_URL, config=s3_config)
+ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
 dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
 sqs = boto3.client("sqs", endpoint_url=ENDPOINT_URL)
 
 
-@logger.inject_lambda_context
-@tracer.capture_lambda_handler
 def lambda_handler(event, context):
-    # --- BLOQUE DE SEGURIDAD: MANEJO DE PREFLIGHT (OPTIONS) ---
-    method = event.get("requestContext", {}).get("http", {}).get("method")
-    if method == "OPTIONS":
+    # 1. Guardia CORS
+    if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
         return {"statusCode": 200, "headers": get_cors_headers()}
 
-    # --- LÓGICA DE NEGOCIO ---
-    table_name = os.getenv("DYNAMODB_TABLE")
-    bucket_name = os.getenv("S3_BUCKET")
-    work_queue_url = os.getenv("SQS_QUEUE_URL")
-    table = dynamo.Table(table_name)
+    table = dynamo.Table(os.getenv("DYNAMODB_TABLE"))
 
     try:
-        body = json.loads(event.get("body", "{}"))
-        user_id = body.get("userId")
-        job_type = body.get("type", "IMPORT").upper()
+        # 2. VALIDACIÓN DE IDENTIDAD (401)
+        auth_header = event.get("headers", {}).get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return cors_response(401, {"error": "No autorizado"})
 
-        if not user_id:
-            return cors_response(400, {"error": "userId es obligatorio"})
+        token = auth_header.split(" ")[1]
 
-        # 2. GENERACIÓN DE IDENTIDAD Y ESTADO INICIAL
+        # Recuperamos el secreto de firma desde SSM
+        jwt_secret = ssm.get_parameter(
+            Name="/extension/auth/jwt_secret", WithDecryption=True
+        )["Parameter"]["Value"]
+
+        try:
+            decoded = decode_nocturne_jwt(token, jwt_secret)
+            user_id = decoded["sub"]  # Identidad real extraída del token
+        except Exception as e:
+            logger.warning(f"Token inválido: {str(e)}")
+            return cors_response(401, {"error": "Sesión expirada o inválida"})
+
+        # 3. CHECK DE TRABAJOS ACTIVOS (409)
+        # Buscamos en el 'cajón' del usuario (PK) cualquier Job (SK empieza por JOB#)
+        active_jobs = table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":sk": "JOB#"},
+        )
+
+        # Filtramos si hay alguno que no esté en estado final (DONE/FAILED) 409 no es un "fallo", sino una forma de recuperar la sesión
+        for job in active_jobs.get("Items", []):
+            if job.get("status") in [
+                "INITIALIZING",
+                "PENDING",
+                "RUNNING",
+                "PAUSED_QUOTA",
+            ]:
+                logger.info(
+                    f"Conflicto: Usuario {user_id} ya tiene el Job {job['jobId']} activo"
+                )
+                return cors_response(
+                    409,
+                    {
+                        "error": "Ya tienes un proceso en marcha",
+                        "jobId": job.get("jobId"),
+                    },
+                )
+
+        # 4. CREACIÓN DE NUEVO TRABAJO (EXPORT)
         job_id = str(uuid.uuid4())
-        initial_status = "INITIALIZING" if job_type == "IMPORT" else "PENDING"
+        body = json.loads(event.get("body", "{}"))
+        job_type = body.get("type", "EXPORT").upper()
 
-        logger.info(f"Iniciando Job {job_id} ({job_type}) para {user_id}")
+        logger.info(f"Creando nuevo Job {job_id} para {user_id}")
 
-        # 3. REGISTRO EN DYNAMODB (El Notario)
+        # Registro en DynamoDB (Single Table Design)
         table.put_item(
             Item={
+                "PK": f"USER#{user_id}",
+                "SK": f"JOB#{job_id}",
                 "jobId": job_id,
                 "userId": user_id,
                 "type": job_type,
-                "status": initial_status,
+                "status": "PENDING",
                 "doneCount": 0,
-                "totalItems": 0,
-                "createdAt": (
-                    int(context.aws_request_id.split("-")[0], 16)
-                    if not ENDPOINT_URL
-                    else 123456789
-                ),
+                "createdAt": str(datetime.datetime.utcnow()),
             }
         )
 
-        # 4. BIFURCACIÓN DE FLUJO
-        response_data = {"jobId": job_id, "type": job_type}
+        # 5. DISPARO ASÍNCRONO
+        sqs.send_message(
+            QueueUrl=os.getenv("SQS_QUEUE_URL"),
+            MessageBody=json.dumps(
+                {"jobId": job_id, "userId": user_id, "type": job_type}
+            ),
+        )
 
-        if job_type == "IMPORT":
-            # Generar contrato de subida a S3
-            s3_key = f"uploads/{user_id}/{job_id}.json"
-            upload_url = s3.generate_presigned_url(
-                ClientMethod="put_object",
-                Params={
-                    "Bucket": bucket_name,
-                    "Key": s3_key,
-                    "ContentType": "application/json",
-                },
-                ExpiresIn=300,
-            )
-            response_data["uploadUrl"] = upload_url
-        else:
-            # Iniciar exportación directa vía SQS
-            sqs.send_message(
-                QueueUrl=work_queue_url,
-                MessageBody=json.dumps({"jobId": job_id, "userId": user_id}),
-            )
-
-        return cors_response(201, response_data)
+        return cors_response(201, {"jobId": job_id, "status": "PENDING"})
 
     except Exception as e:
-        logger.exception(f"Error al crear Job")
-        return cors_response(500, {"error": "No se pudo procesar la solicitud"})
+        logger.exception("Error en el Iniciador")
+        return cors_response(500, {"error": "Internal Server Error"})
