@@ -53,13 +53,13 @@ jobs:
           cd dist/dispatcher && zip -r ../dispatcher.zip . && cd ../..
 
           # 5. Construir STATUS
-          pip install aws-lambda-powertools aws-xray-sdk -t dist/status/ --quiet
+          pip install -r dist/requirements.txt -t dist/status/ --ignore-installed --quiet
           cp src/status/status.py dist/status/
           cp -r src/shared dist/status/
           cd dist/status && zip -r ../status.zip . && cd ../..
 
           # 6. Construir UPLOAD
-          pip install aws-lambda-powertools aws-xray-sdk -t dist/upload/ --quiet
+          pip install -r dist/requirements.txt -t dist/upload/ --ignore-installed --quiet
           cp src/upload/upload.py dist/upload/
           cp -r src/shared dist/upload/
           cd dist/upload && zip -r ../upload.zip . && cd ../..
