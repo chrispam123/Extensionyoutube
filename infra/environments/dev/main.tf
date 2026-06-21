@@ -629,6 +629,13 @@ resource "aws_iam_role_policy" "upload_permissions" {
         }
       },
 
+      {
+        Sid    = "AllowSSMReadJWTSecret"
+        Action = ["ssm:GetParameter"]
+        Effect = "Allow"
+        # Le damos acceso específico al secreto del JWT
+        Resource = aws_ssm_parameter.jwt_secret.arn
+      },
 
       # --- NUEVO: PERMISO PARA INICIAR EXPORTACIONES ---ENVIAR A SQS en EXPORTACION
       {
