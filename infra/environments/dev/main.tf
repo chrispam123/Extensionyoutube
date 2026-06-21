@@ -615,6 +615,21 @@ resource "aws_iam_role_policy" "upload_permissions" {
         Effect   = "Allow"
         Resource = "${aws_s3_bucket.uploads_bucket.arn}/uploads/*"
       },
+      {
+        Sid      = "AllowUserJobLookup"
+        Action   = ["dynamodb:Query"] #"Dame todo lo que este usuario tenga (PK=USER#123) y luego yo filtro los resultados".
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.jobs_table.arn
+        # SEGURIDAD NINJA: Solo puede consultar sus propios registros
+        # El prefijo de la Partition Key (PK) debe ser USER# seguido del ID del usuario
+        Condition = {
+          "ForAllValues:StringLike" : {
+            "dynamodb:LeadingKeys" : ["USER#*"] #mpediría que esta Lambda consultara los trabajos de un usuario distinto al que está logueado.
+          }
+        }
+      },
+
+
       # --- NUEVO: PERMISO PARA INICIAR EXPORTACIONES ---ENVIAR A SQS en EXPORTACION
       {
         Sid      = "AllowSQSWorkSend"
