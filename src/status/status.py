@@ -1,71 +1,69 @@
 # -*- coding: utf-8 -*-
-"""
-Project: Nocturne Backend
-Component: Status Lambda
-"""
-
 import json
 import os
 
 import boto3
 from aws_lambda_powertools import Logger
-
-# IMPORTANTE: Usamos nuestra capa compartida para mantener el estándar CORS
+from shared.auth import (
+    decode_nocturne_jwt,  # <--- NUEVO: Necesitamos validar quién pregunta
+)
 from shared.responses import cors_response, get_cors_headers
 
 logger = Logger()
 
-# 1. Inicialización de Clientes (Warm Start)
+# Inicialización de Clientes
 ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
 if not ENDPOINT_URL or not ENDPOINT_URL.strip():
     ENDPOINT_URL = None
-
 dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
+ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
 
 
 def lambda_handler(event, context):
-    # --- BLOQUE DE SEGURIDAD: MANEJO DE PREFLIGHT (OPTIONS) ---
-    # Principio de Eficiencia: Respondemos antes de inicializar lógica pesada
-    method = event.get("requestContext", {}).get("http", {}).get("method")
-    if method == "OPTIONS":
+    # 1. Guardia CORS
+    if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
         return {"statusCode": 200, "headers": get_cors_headers()}
 
-    # --- LÓGICA DE NEGOCIO ---
-    table_name = os.getenv("DYNAMODB_TABLE")
-    table = dynamo.Table(table_name)
-
-    path_params = event.get("pathParameters", {})
-    job_id = path_params.get("jobId")
-    logger.info(f"🔍 Consulta de estado recibida para el Job: {job_id}")  # <--- NUEVO
-    if not job_id:
-        return cors_response(400, {"error": "Falta el parámetro jobId"})
+    table = dynamo.Table(os.getenv("DYNAMODB_TABLE"))
 
     try:
-        logger.info(f"📡 Accediendo a DynamoDB para leer el Job {job_id}")  # <--- NUEVO
-        response = table.get_item(Key={"jobId": job_id})
+        # 2. EXTRAER IDENTIDAD DEL JWT (Seguridad)
+        auth_header = event.get("headers", {}).get("authorization", "")
+        token = auth_header.split(" ")[1] if " " in auth_header else ""
+
+        jwt_secret = ssm.get_parameter(
+            Name="/extension/auth/jwt_secret", WithDecryption=True
+        )["Parameter"]["Value"]
+        decoded = decode_nocturne_jwt(token, jwt_secret)
+        user_id = decoded["sub"]
+
+        # 3. EXTRAER ID DEL TRABAJO DE LA URL
+        job_id = event.get("pathParameters", {}).get("jobId")
+
+        logger.info(f"🔍 Buscando estado del Job {job_id} para el usuario {user_id}")
+
+        # 4. CONSULTA CON EL NUEVO ESQUEMA (PK/SK)
+        # Construimos las llaves según el estándar de nuestra Single Table
+        response = table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"})
         item = response.get("Item")
 
         if not item:
-            # Principio de Veracidad HTTP
-            logger.warning(
-                f"⚠️ El Job {job_id} no existe en la base de datos"
-            )  # <--- NUEVO
-            return cors_response(404, {"error": f"Job {job_id} no encontrado"})
-        logger.info(
-            f"✅ Job {job_id} encontrado. Estado actual: {item.get('status')}"
-        )  # <--- NUEVO
-        # 3. CONTRATO DE RESPUESTA (Filtrado de seguridad)
+            return cors_response(
+                404, {"error": "Trabajo no encontrado o no pertenece a este usuario"}
+            )
+
+        # 5. RESPUESTA FILTRADA
         data = {
             "jobId": item.get("jobId"),
             "status": item.get("status"),
             "doneCount": int(item.get("doneCount", 0)),
-            "totalItems": int(item.get("totalItems", 0)),
-            "updatedAt": item.get("updatedAt"),
+            "type": item.get("type"),
         }
-
-        # Usamos la utilidad para devolver el JSON con cabeceras dinámicas
         return cors_response(200, data)
 
     except Exception as e:
-        logger.exception(f"Error al consultar estado del Job {job_id}")
-        return cors_response(500, {"error": "Internal Server Error"})
+        logger.exception("Error en Lambda Status")
+        return cors_response(
+            401 if "jwt" in str(e).lower() else 500,
+            {"error": "No autorizado o error interno"},
+        )
