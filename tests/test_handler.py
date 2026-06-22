@@ -6,6 +6,7 @@ from moto import mock_aws
 from src.worker.handler import lambda_handler
 
 
+# 1. Definimos el "Doble de Acción" para el contexto de AWS
 class MockContext:
     def __init__(self):
         self.function_name = "extension-worker-local"
@@ -18,27 +19,20 @@ class MockContext:
 
 @mock_aws
 def test_handler_success(monkeypatch, mocker):
+    # ---------------------------------------------------------
     # 1. ARRANGE: Configuración de entorno
+    # ---------------------------------------------------------
     monkeypatch.setenv("S3_BUCKET", "extension-s3-uploads-local")
-    monkeypatch.setenv("DYNAMODB_TABLE", "extension-dynamo-jobs-local")
+    monkeypatch.setenv("DYNAMODB_TABLE", "extension-dynamo-table-local")
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("SQS_QUEUE_URL", "http://fake-queue-url")
 
-    # --- MOCKS DE LÓGICA (Evitamos KMS y Google) ---
-    # Parcheamos el descifrado para que devuelva un token plano directamente
-    mocker.patch(
-        "src.worker.handler.decrypt_token", return_value="token-real-desbloqueado"
-    )
-
-    # Parcheamos el refresco de Google
-    mocker.patch(
-        "src.worker.handler.refresh_access_token", return_value="fake-access-token"
-    )
-
-    # Parcheamos el cliente de YouTube
+    # --- MOCKS DE LÓGICA (Evitamos llamadas reales a Google/KMS) ---
+    mocker.patch("src.worker.handler.decrypt_token", return_value="fake-token")
+    mocker.patch("src.worker.handler.refresh_access_token", return_value="fake-access")
     mock_yt = mocker.patch("src.worker.handler.YouTubeClient")
     mock_yt.return_value.get_subscriptions.return_value = {
-        "items": [{"id": "chan1"}],
+        "items": [{"id": "c1"}],
         "nextPageToken": None,
     }
 
@@ -47,39 +41,65 @@ def test_handler_success(monkeypatch, mocker):
     dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
     ssm = boto3.client("ssm", region_name="us-east-1")
 
+    # Preparar SSM
     ssm.put_parameter(Name="/extension/google/client_id", Value="fake", Type="String")
     ssm.put_parameter(
         Name="/extension/google/client_secret", Value="fake", Type="String"
     )
+
+    # Preparar S3
     s3.create_bucket(Bucket="extension-s3-uploads-local")
 
+    # [CAMBIO CRÍTICO]: Definición de la tabla con PK y SK (Single Table Design)
     table = dynamodb.create_table(
-        TableName="extension-dynamo-jobs-local",
-        KeySchema=[{"AttributeName": "jobId", "KeyType": "HASH"}],
-        AttributeDefinitions=[{"AttributeName": "jobId", "AttributeType": "S"}],
+        TableName="extension-dynamo-table-local",
+        KeySchema=[
+            {"AttributeName": "PK", "KeyType": "HASH"},
+            {"AttributeName": "SK", "KeyType": "RANGE"},
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "PK", "AttributeType": "S"},
+            {"AttributeName": "SK", "AttributeType": "S"},
+        ],
         ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
     )
 
+    # [CAMBIO CRÍTICO]: Insertar el Job usando el nuevo formato de llaves
+    user_id = "user-1"
     job_id = "job-1"
     table.put_item(
         Item={
+            "PK": f"USER#{user_id}",
+            "SK": f"JOB#{job_id}",
             "jobId": job_id,
+            "userId": user_id,
             "status": "PENDING",
-            "encryptedRefreshToken": "cualquier-cosa-no-importa-el-mock-lo-saltara",
+            "type": "EXPORT",
+            "encryptedRefreshToken": "ZmFrZS10b2tlbg==",  # Base64 válido
         }
     )
 
+    # Preparar el archivo en S3 (por si el test fuera de tipo IMPORT)
     s3.put_object(
         Bucket="extension-s3-uploads-local",
-        Key=f"uploads/user-1/{job_id}.json",
+        Key=f"uploads/{user_id}/{job_id}.json",
         Body=json.dumps([{"id": "chan1"}]),
     )
 
-    # 3. ACT: Ejecutar la Lambda
-    event = {"Records": [{"body": json.dumps({"jobId": job_id, "userId": "user-1"})}]}
+    # 3. EL EVENTO (Lo que envía SQS)
+    event = {"Records": [{"body": json.dumps({"jobId": job_id, "userId": user_id})}]}
+
+    # ---------------------------------------------------------
+    # 2. ACT: Ejecutar la Lambda
+    # ---------------------------------------------------------
     response = lambda_handler(event, MockContext())
 
-    # 4. ASSERT: Verificar éxito
+    # ---------------------------------------------------------
+    # 3. ASSERT: Verificar éxito
+    # ---------------------------------------------------------
     assert response["status"] == "processed"
-    item = table.get_item(Key={"jobId": job_id})["Item"]
+
+    # [CAMBIO CRÍTICO]: Verificar el estado usando la llave compuesta
+    item = table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"})["Item"]
+
     assert item["status"] == "DONE"
