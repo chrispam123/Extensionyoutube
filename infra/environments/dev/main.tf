@@ -495,6 +495,13 @@ resource "aws_iam_role_policy" "status_permissions" {
         Action   = ["dynamodb:GetItem"] # <--- ÚNICO PODER: LEER UN ITEM
         Effect   = "Allow"
         Resource = aws_dynamodb_table.jobs_table.arn
+      },
+      # --- NUEVO: PERMISO PARA VALIDAR JWT ---
+      {
+        Sid      = "AllowSSMReadJWTSecret"
+        Action   = ["ssm:GetParameter"]
+        Effect   = "Allow"
+        Resource = aws_ssm_parameter.jwt_secret.arn
       }
     ]
   })
