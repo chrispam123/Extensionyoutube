@@ -3,6 +3,7 @@
 Project: Nocturne Backend
 Component: Dispatcher Lambda
 """
+
 import json
 import os
 import boto3
