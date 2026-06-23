@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
+import json
+
 import boto3
 import pytest
-import json
 from moto import mock_aws
 from src.worker.handler import lambda_handler
 
 
-# 1. Definimos el "Doble de Acción" para el contexto de AWS
+# 1. El "Doble de Acción" para el contexto de AWS
 class MockContext:
     def __init__(self):
         self.function_name = "extension-worker-local"
@@ -22,12 +23,12 @@ def test_handler_success(monkeypatch, mocker):
     # ---------------------------------------------------------
     # 1. ARRANGE: Configuración de entorno
     # ---------------------------------------------------------
-    monkeypatch.setenv("S3_BUCKET", "extension-s3-uploads-local")
     monkeypatch.setenv("DYNAMODB_TABLE", "extension-dynamo-table-local")
+    monkeypatch.setenv("S3_BUCKET", "extension-s3-uploads-local")
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("SQS_QUEUE_URL", "http://fake-queue-url")
 
-    # --- MOCKS DE LÓGICA (Evitamos llamadas reales a Google/KMS) ---
+    # --- MOCKS DE LÓGICA (Evitamos llamadas reales) ---
     mocker.patch("src.worker.handler.decrypt_token", return_value="fake-token")
     mocker.patch("src.worker.handler.refresh_access_token", return_value="fake-access")
     mock_yt = mocker.patch("src.worker.handler.YouTubeClient")
@@ -41,7 +42,7 @@ def test_handler_success(monkeypatch, mocker):
     dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
     ssm = boto3.client("ssm", region_name="us-east-1")
 
-    # Preparar SSM
+    # Preparar SSM (Simulamos que los secretos ya están ahí)
     ssm.put_parameter(Name="/extension/google/client_id", Value="fake", Type="String")
     ssm.put_parameter(
         Name="/extension/google/client_secret", Value="fake", Type="String"
@@ -50,7 +51,7 @@ def test_handler_success(monkeypatch, mocker):
     # Preparar S3
     s3.create_bucket(Bucket="extension-s3-uploads-local")
 
-    # [CAMBIO CRÍTICO]: Definición de la tabla con PK y SK (Single Table Design)
+    # [CONTRATO]: Tabla con PK y SK
     table = dynamodb.create_table(
         TableName="extension-dynamo-table-local",
         KeySchema=[
@@ -64,9 +65,19 @@ def test_handler_success(monkeypatch, mocker):
         ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
     )
 
-    # [CAMBIO CRÍTICO]: Insertar el Job usando el nuevo formato de llaves
-    user_id = "user-1"
-    job_id = "job-1"
+    user_id = "user-123"
+    job_id = "job-abc"
+
+    # [ESCENARIO]: Creamos el PROFILE del usuario
+    table.put_item(
+        Item={
+            "PK": f"USER#{user_id}",
+            "SK": "PROFILE",
+            "encryptedRefreshToken": "ZmFrZS10b2tlbg==",  # Base64 de 'fake-token'
+        }
+    )
+
+    # [ESCENARIO]: Creamos el registro del JOB
     table.put_item(
         Item={
             "PK": f"USER#{user_id}",
@@ -75,18 +86,10 @@ def test_handler_success(monkeypatch, mocker):
             "userId": user_id,
             "status": "PENDING",
             "type": "EXPORT",
-            "encryptedRefreshToken": "ZmFrZS10b2tlbg==",  # Base64 válido
         }
     )
 
-    # Preparar el archivo en S3 (por si el test fuera de tipo IMPORT)
-    s3.put_object(
-        Bucket="extension-s3-uploads-local",
-        Key=f"uploads/{user_id}/{job_id}.json",
-        Body=json.dumps([{"id": "chan1"}]),
-    )
-
-    # 3. EL EVENTO (Lo que envía SQS)
+    # 3. EL EVENTO (Lo que enviaría SQS)
     event = {"Records": [{"body": json.dumps({"jobId": job_id, "userId": user_id})}]}
 
     # ---------------------------------------------------------
@@ -99,7 +102,10 @@ def test_handler_success(monkeypatch, mocker):
     # ---------------------------------------------------------
     assert response["status"] == "processed"
 
-    # [CAMBIO CRÍTICO]: Verificar el estado usando la llave compuesta
-    item = table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"})["Item"]
+    # Verificamos que el JOB (y no el PROFILE) se actualizó a DONE
+    job_item = table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"})[
+        "Item"
+    ]
 
-    assert item["status"] == "DONE"
+    assert job_item["status"] == "DONE"
+    assert "updatedAt" in job_item
