@@ -142,10 +142,23 @@ resource "aws_iam_role_policy" "worker_permissions" {
         Resource = aws_kms_key.token_key.arn
       },
 
-      #ACTUALIZACIÓN DE PERMISOS (Añadir SQS SendMessage)
+      #ACTUALIZACIÓN DE PERMISOS (Añadir SQS SendMessage) es el permiso para HABLAR (enviar mensajes).
+      # Es lo que el Worker usa para el "Relay" (auto-invocación).
       {
         Sid      = "AllowSQSReplay"
         Action   = ["sqs:SendMessage"]
+        Effect   = "Allow"
+        Resource = aws_sqs_queue.jobs_queue.arn
+      },
+      #El Worker necesita permiso para ESCUCHAR (recibir mensajes).
+      # el Event Source Mapping podrá por fin entregarle los mensajes que están acumulados en la cola.
+      {
+        Sid = "AllowSQSConsume"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
+        ]
         Effect   = "Allow"
         Resource = aws_sqs_queue.jobs_queue.arn
       },
