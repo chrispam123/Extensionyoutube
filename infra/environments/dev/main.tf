@@ -144,17 +144,24 @@ resource "aws_iam_role_policy" "worker_permissions" {
         Resource = "arn:aws:logs:*:*:*"
       },
       { # Actualizamos el bloque de S3
-        Sid    = "AllowS3Accumulation"
+        Sid    = "AllowS3BucketLevel"
+        Action = ["s3:ListBucket"]
         Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject"
-        ]
+        # OJO: Aquí NO lleva /* al final, apunta al cubo directamente arn:aws:s3:::mi-bucket -> Es la caja.
+        # Para que el Worker pueda manejar el error NoSuchKey (404) y saber que debe empezar una lista vacía, necesita ver la caja.
+        Resource = aws_s3_bucket.uploads_bucket.arn
+      },
+      {
+        Sid    = "AllowS3ObjectLevel"
+        Action = ["s3:GetObject", "s3:PutObject"]
+        Effect = "Allow"
+        # Aquí SÍ lleva /* porque actúa sobre los archivos arn:aws:s3:::mi-bucket/* -> Es lo que hay dentro de la caja.
         Resource = [
           "${aws_s3_bucket.uploads_bucket.arn}/uploads/*",
           "${aws_s3_bucket.uploads_bucket.arn}/exports/*"
         ]
       },
+
       { Sid = "AllowDynamoWrite"
         # Permiso para el Cerebro DynamoDB
         Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
