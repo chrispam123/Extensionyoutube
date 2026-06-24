@@ -144,13 +144,13 @@ resource "aws_iam_role_policy" "worker_permissions" {
         Resource = "arn:aws:logs:*:*:*"
       },
       { # Actualizamos el bloque de S3
-        sid    = "AllowS3Accumulation"
-        effect = "Allow"
-        action = [
+        Sid    = "AllowS3Accumulation"
+        Effect = "Allow"
+        Action = [
           "s3:GetObject",
           "s3:PutObject"
         ]
-        resource = [
+        Resource = [
           "${aws_s3_bucket.uploads_bucket.arn}/uploads/*",
           "${aws_s3_bucket.uploads_bucket.arn}/exports/*"
         ]
