@@ -164,7 +164,9 @@ def lambda_handler(event, context):
                     MessageBody=json.dumps({"jobId": job_id, "userId": user_id}),
                 )
             else:
-                logger.info(f"🏁 Exportación finalizada. Total: {len(accumulated_data)}")
+                logger.info(
+                    f"🏁 Exportación finalizada. Total: {len(accumulated_data)}"
+                )
                 table.update_item(
                     Key=job_key,
                     UpdateExpression="SET #s = :done, updatedAt = :now",
