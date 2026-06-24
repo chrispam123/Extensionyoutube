@@ -581,7 +581,11 @@ resource "aws_lambda_function" "status_lambda" {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
       # AQUÍ CONECTAMOS EL PUENTE pra python:
-      EXTENSION_ID = var.extension_id
+      EXTENSION_ID         = var.extension_id
+      POWERTOOLS_LOG_LEVEL = "INFO"
+      # --- ESTA ES LA LÍNEA QUE FALTA ---
+      S3_BUCKET = aws_s3_bucket.uploads_bucket.id
+
     }
   }
 }
