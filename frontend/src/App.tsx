@@ -17,6 +17,7 @@ function App() {
   const [loading, setLoading] = useState<boolean>(false);
 
   // 1. SINCRONIZACIÓN: Escuchar cambios en el almacenamiento de la extensión
+  // 1. SINCRONIZACIÓN: Escuchar cambios en el almacenamiento de la extensión
   useEffect(() => {
     // Carga inicial
     chrome.storage.local.get(
@@ -31,7 +32,10 @@ function App() {
     const handleStorageChange = (changes: {
       [key: string]: chrome.storage.StorageChange;
     }) => {
-      if (changes.nocturne_user) setUserEmail(changes.nocturne_user.newValue);
+      if (changes.nocturne_user) {
+        // ✔️ Corrección: Le indicamos a TypeScript que trate el valor como string o null
+        setUserEmail((changes.nocturne_user.newValue as string) || null);
+      }
       if (changes.last_job_status) {
         setJob(changes.last_job_status.newValue as JobStatus);
         setLoading(false);
