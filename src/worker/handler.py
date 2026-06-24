@@ -2,31 +2,27 @@
 """
 Project: Nocturne Backend
 Component: Worker Lambda
-Purpose: Process YouTube jobs using Single Table Design (PK/SK).
+Purpose: Process YouTube subscriptions and accumulate results in S3.
 """
 
-import binascii
-import datetime
 import json
 import os
-
 import boto3
+import binascii
+import datetime
+from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger, Tracer
-from shared.exceptions import InvalidTokenError, QuotaExceededError
-from shared.google_auth import refresh_access_token
 
-# Importaciones de nuestra capa Shared
+# Capa Shared
 from shared.security import decrypt_token
+from shared.google_auth import refresh_access_token
 from shared.youtube_client import YouTubeClient
+from shared.exceptions import QuotaExceededError
 
-# 1. Configuración de Observabilidad
 logger = Logger()
 tracer = Tracer()
 
-# 2. Caché Global para Secretos (Warm Start)
-cached_secrets = {"client_id": None, "client_secret": None}
-
-# 3. Inicialización de Clientes AWS (Fuera del handler)
+# 1. Inicialización de Clientes (Warm Start)
 RAW_ENDPOINT = os.getenv("AWS_ENDPOINT_URL")
 ENDPOINT_URL = RAW_ENDPOINT if RAW_ENDPOINT and RAW_ENDPOINT.strip() else None
 
@@ -39,15 +35,14 @@ sqs = boto3.client("sqs", endpoint_url=ENDPOINT_URL)
 
 def get_google_secrets():
     """Recupera secretos de SSM con caché en memoria."""
-    if not cached_secrets["client_id"] or not cached_secrets["client_secret"]:
-        logger.info("🔍 Consultando secretos de Google en SSM...")
-        cached_secrets["client_id"] = ssm.get_parameter(
-            Name="/extension/google/client_id", WithDecryption=True
-        )["Parameter"]["Value"]
-        cached_secrets["client_secret"] = ssm.get_parameter(
-            Name="/extension/google/client_secret", WithDecryption=True
-        )["Parameter"]["Value"]
-    return cached_secrets["client_id"], cached_secrets["client_secret"]
+    # Nota: En un entorno real usaríamos una variable global para caché
+    cid = ssm.get_parameter(Name="/extension/google/client_id", WithDecryption=True)[
+        "Parameter"
+    ]["Value"]
+    csec = ssm.get_parameter(
+        Name="/extension/google/client_secret", WithDecryption=True
+    )["Parameter"]["Value"]
+    return cid, csec
 
 
 @logger.inject_lambda_context
@@ -64,75 +59,93 @@ def lambda_handler(event, context):
             job_id = payload.get("jobId")
             user_id = payload.get("userId")
 
-            if not job_id or not user_id:
-                logger.error("❌ Mensaje mal formado en SQS")
-                continue
-
-            # [CAMBIO PK/SK]: Definimos las coordenadas exactas en la Single Table
             job_key = {"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"}
             profile_key = {"PK": f"USER#{user_id}", "SK": "PROFILE"}
 
-            logger.info(f"🚀 Iniciando Worker para Job: {job_id}")
+            logger.info(f"🚀 Procesando relevo para Job: {job_id}")
 
-            # B. RECUPERAR IDENTIDAD (PROFILE)
-            # Buscamos el token cifrado en el registro del perfil
-            profile_res = table.get_item(Key=profile_key)
-            profile_item = profile_res.get("Item", {})
+            # B. RECUPERAR IDENTIDAD Y ESTADO
+            profile_item = table.get_item(Key=profile_key).get("Item", {})
+            job_item = table.get_item(Key=job_key).get("Item", {})
+
+            if not profile_item or not job_item:
+                logger.error("❌ Perfil o Job no encontrado. Abortando.")
+                continue
+
             encrypted_token = profile_item.get("encryptedRefreshToken")
-
-            if not encrypted_token:
-                logger.error(
-                    f"❌ No se encontró Refresh Token para el usuario {user_id}"
-                )
-                continue
-
-            # C. RECUPERAR METADATOS DEL TRABAJO (JOB)
-            job_res = table.get_item(Key=job_key)
-            job_item = job_res.get("Item", {})
-
-            if not job_item:
-                logger.error(f"❌ El Job {job_id} no existe en DynamoDB")
-                continue
-
-            job_type = job_item.get("type", "EXPORT")
             current_page_token = job_item.get("nextPageToken")
+            job_type = job_item.get("type", "EXPORT")
 
-            # D. FASE DE AUTENTICACIÓN
+            # C. AUTENTICACIÓN
             client_id, client_secret = get_google_secrets()
+            refresh_token = decrypt_token(kms_client, encrypted_token)
+            access_token = refresh_access_token(client_id, client_secret, refresh_token)
 
-            try:
-                # Desciframos la llave maestra del usuario
-                refresh_token = decrypt_token(kms_client, encrypted_token)
-                # Obtenemos llave temporal de Google
-                access_token = refresh_access_token(
-                    client_id, client_secret, refresh_token
-                )
-            except Exception as auth_err:
-                logger.error(f"❌ Fallo de autenticación: {str(auth_err)}")
-                continue
-
-            # E. EJECUCIÓN DE LÓGICA (YouTube API)
+            # D. EJECUCIÓN Y COSECHA
             yt = YouTubeClient(access_token)
+            new_items = []
 
-            if job_type == "IMPORT":
-                # Lógica de Importación (Leer de S3)
-                s3_key = f"uploads/{user_id}/{job_id}.json"
-                logger.info(f"📥 Modo IMPORT: Leyendo s3://{bucket_name}/{s3_key}")
-                s3_res = s3.get_object(Bucket=bucket_name, Key=s3_key)
-                data = json.loads(s3_res["Body"].read().decode("utf-8"))
-                items_count = len(data)
-                next_page_token = None
-            else:
-                # Lógica de Exportación (Llamar a YouTube)
-                logger.info(f"📤 Modo EXPORT: Consultando YouTube API...")
+            if job_type == "EXPORT":
+                logger.info("📤 Consultando YouTube API...")
                 yt_res = yt.get_subscriptions(
                     max_results=50, page_token=current_page_token
                 )
-                items_count = len(yt_res.get("items", []))
+                # Extraemos solo lo que nos interesa para ahorrar espacio
+                for item in yt_res.get("items", []):
+                    snippet = item.get("snippet", {})
+                    new_items.append(
+                        {
+                            "id": item.get("id"),
+                            "title": snippet.get("title"),
+                            "channelId": snippet.get("resourceId", {}).get("channelId"),
+                            "thumbnail": snippet.get("thumbnails", {})
+                            .get("default", {})
+                            .get("url"),
+                        }
+                    )
                 next_page_token = yt_res.get("nextPageToken")
+            else:
+                # Lógica de IMPORT (pendiente de implementar en detalle)
+                next_page_token = None
 
-            # F. ACTUALIZACIÓN ATÓMICA DE PROGRESO
-            # Usamos la 'job_key' (PK/SK) para actualizar el registro correcto
+            # =================================================================
+            # E. ACUMULACIÓN EN S3 (EL CORAZÓN DE LA ÉPICA)
+            # =================================================================
+            s3_key = f"exports/{user_id}/{job_id}.json"
+            accumulated_data = []
+
+            try:
+                # Intentamos descargar lo que ya llevamos cosechado
+                existing_obj = s3.get_object(Bucket=bucket_name, Key=s3_key)
+                accumulated_data = json.loads(
+                    existing_obj["Body"].read().decode("utf-8")
+                )
+                logger.info(
+                    f"📚 Archivo existente recuperado. Canales previos: {len(accumulated_data)}"
+                )
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "NoSuchKey":
+                    logger.info("🆕 No hay archivo previo. Iniciando nueva cosecha.")
+                else:
+                    raise
+
+            # Unimos lo viejo con lo nuevo
+            accumulated_data.extend(new_items)
+
+            # Subimos la cosecha actualizada
+            s3.put_object(
+                Bucket=bucket_name,
+                Key=s3_key,
+                Body=json.dumps(accumulated_data),
+                ContentType="application/json",
+            )
+            logger.info(
+                f"💾 Cosecha guardada en S3. Total actual: {len(accumulated_data)}"
+            )
+
+            # =================================================================
+            # F. ACTUALIZACIÓN DE PROGRESO Y RELEVO
+            # =================================================================
             table.update_item(
                 Key=job_key,
                 UpdateExpression="SET #s = :run, nextPageToken = :next, updatedAt = :now ADD doneCount :inc",
@@ -140,22 +153,20 @@ def lambda_handler(event, context):
                 ExpressionAttributeValues={
                     ":run": "RUNNING",
                     ":next": next_page_token,
-                    ":inc": items_count,
+                    ":inc": len(new_items),
                     ":now": datetime.datetime.now(datetime.UTC).isoformat(),
                 },
             )
 
-            # G. LÓGICA DE RELEVO (Relay Pattern)
             if next_page_token:
-                logger.info(
-                    f"🔄 Re-encolando para la siguiente página: {next_page_token}"
-                )
                 sqs.send_message(
                     QueueUrl=queue_url,
                     MessageBody=json.dumps({"jobId": job_id, "userId": user_id}),
                 )
             else:
-                logger.info(f"✅ Job {job_id} finalizado.")
+                logger.info(
+                    f"🏁 Exportación finalizada. Total: {len(accumulated_data)}"
+                )
                 table.update_item(
                     Key=job_key,
                     UpdateExpression="SET #s = :done, updatedAt = :now",
@@ -167,7 +178,6 @@ def lambda_handler(event, context):
                 )
 
         except QuotaExceededError:
-            logger.warning(f"⚠️ Cuota agotada para Job {job_id}. Pausando...")
             table.update_item(
                 Key=job_key,
                 UpdateExpression="SET #s = :paused, updatedAt = :now",
@@ -180,7 +190,7 @@ def lambda_handler(event, context):
             return {"status": "paused"}
 
         except Exception as e:
-            logger.exception(f"🔥 Error crítico en el Worker: {str(e)}")
+            logger.exception("🔥 Fallo crítico en el Worker")
             raise e
 
     return {"status": "processed"}

@@ -12,8 +12,10 @@ logger = Logger()
 ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
 if not ENDPOINT_URL or not ENDPOINT_URL.strip():
     ENDPOINT_URL = None
+
 dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
 ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
+s3 = boto3.client("s3", endpoint_url=ENDPOINT_URL)  # <--- NUEVO CLIENTE
 
 
 def lambda_handler(event, context):
@@ -24,50 +26,52 @@ def lambda_handler(event, context):
     table = dynamo.Table(os.getenv("DYNAMODB_TABLE"))
 
     try:
-        # 2. EXTRAER IDENTIDAD (Con Log de Perito)
+        # 2. VALIDACIÓN DE IDENTIDAD
         auth_header = event.get("headers", {}).get("authorization", "")
-
-        # LOG CRÍTICO: Ver qué llega exactamente
-        logger.info(f"DEBUG: Auth Header recibido: '{auth_header}'")
-
-        if not auth_header or "Bearer " not in auth_header:
-            logger.warning("Petición sin cabecera Bearer")
-            return cors_response(401, {"error": "No autorizado: Falta Token"})
-
-        token = auth_header.split(" ")[1]
-        logger.info(f"DEBUG: Token extraído (longitud): {len(token)}")
-
-        # 3. VALIDACIÓN
+        token = auth_header.split(" ")[1] if " " in auth_header else ""
         jwt_secret = ssm.get_parameter(
             Name="/extension/auth/jwt_secret", WithDecryption=True
         )["Parameter"]["Value"]
 
-        try:
-            decoded = decode_nocturne_jwt(token, jwt_secret)
-            user_id = decoded["sub"]
-        except Exception as jwt_err:
-            logger.error(f"Error decodificando JWT: {str(jwt_err)}")
-            return cors_response(401, {"error": f"Token inválido: {str(jwt_err)}"})
+        decoded = decode_nocturne_jwt(token, jwt_secret)
+        user_id = decoded["sub"]
 
-        # 4. CONSULTA DYNAMODB
+        # 3. CONSULTA DE ESTADO
         job_id = event.get("pathParameters", {}).get("jobId")
-        logger.info(f"🔍 Buscando Job {job_id} para usuario {user_id}")
-
         response = table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"})
         item = response.get("Item")
 
         if not item:
             return cors_response(404, {"error": "Trabajo no encontrado"})
 
-        return cors_response(
-            200,
-            {
-                "jobId": item.get("jobId"),
-                "status": item.get("status"),
-                "doneCount": int(item.get("doneCount", 0)),
-            },
-        )
+        status = item.get("status")
+
+        # 4. CONTRATO DE RESPUESTA BASE
+        data = {
+            "jobId": item.get("jobId"),
+            "status": status,
+            "doneCount": int(item.get("doneCount", 0)),
+            "updatedAt": item.get("updatedAt"),
+        }
+
+        # =====================================================================
+        # 5. LÓGICA DE ENTREGA: GENERAR URL SI ESTÁ TERMINADO
+        # =====================================================================
+        if status == "DONE":
+            logger.info(f"🎁 Job {job_id} finalizado. Generando URL de descarga...")
+            bucket_name = os.getenv("S3_BUCKET")
+            s3_key = f"exports/{user_id}/{job_id}.json"
+
+            download_url = s3.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": bucket_name, "Key": s3_key},
+                ExpiresIn=300,  # El usuario tiene 5 minutos para iniciar la descarga
+            )
+            data["downloadUrl"] = download_url
+        # =====================================================================
+
+        return cors_response(200, data)
 
     except Exception as e:
-        logger.exception("Error no controlado en Status")
+        logger.exception("Error en Lambda Status")
         return cors_response(500, {"error": "Internal Server Error"})

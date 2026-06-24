@@ -47,7 +47,7 @@ resource "aws_dynamodb_table" "jobs_table" {
 }
 
 
-# 1. El Bunker S3 donde se suben los canales y playslits
+# 1. El Bunker S3 donde se suben los canales y playslits EXPORTADOS
 resource "aws_s3_bucket" "uploads_bucket" {
   bucket = "extension-s3-uploads-${var.environment}"
 
@@ -58,6 +58,26 @@ resource "aws_s3_bucket" "uploads_bucket" {
     Project = "Nocturne"
   }
 }
+
+# 2. POLÍTICA DE CICLO DE VIDA PARA S3 (Higiene Automática)
+# Eliminamos archivos antiguos de S3 para evitar acumulación de datos
+resource "aws_s3_bucket_lifecycle_configuration" "uploads_lifecycle" {
+  bucket = aws_s3_bucket.uploads_bucket.id
+  rule {
+    id     = "cleanup-exports"
+    status = "Enabled"
+
+    filter {
+      prefix = "exports/" # Solo afecta a las exportaciones terminadas
+    }
+
+    expiration {
+      days = 7 # Los archivos mueren automáticamente tras una semana
+    }
+  }
+}
+
+
 
 # 2. La Cola de Mensajes Muertos (DLQ) lambda worker
 resource "aws_sqs_queue" "jobs_dlq" {
@@ -123,11 +143,17 @@ resource "aws_iam_role_policy" "worker_permissions" {
         Effect   = "Allow"
         Resource = "arn:aws:logs:*:*:*"
       },
-      { Sid = "AllowS3Read"
-        # Permiso para el Bunker S3
-        Action   = ["s3:GetObject"]
-        Effect   = "Allow"
-        Resource = "${aws_s3_bucket.uploads_bucket.arn}/*"
+      { # Actualizamos el bloque de S3
+        sid    = "AllowS3Accumulation"
+        effect = "Allow"
+        action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        resource = [
+          "${aws_s3_bucket.uploads_bucket.arn}/uploads/*",
+          "${aws_s3_bucket.uploads_bucket.arn}/exports/*"
+        ]
       },
       { Sid = "AllowDynamoWrite"
         # Permiso para el Cerebro DynamoDB
@@ -197,10 +223,11 @@ resource "aws_lambda_function" "worker_lambda" {
   filename         = "${path.module}/../../../dist/worker.zip"
   source_code_hash = filebase64sha256("${path.module}/../../../dist/worker.zip")
 
-  handler = "handler.lambda_handler"
-  runtime = "python3.12"
-  timeout = 30
-  role    = aws_iam_role.worker_role.arn # <--- Referencia actualizada
+  handler     = "handler.lambda_handler"
+  runtime     = "python3.12"
+  memory_size = 256                          # Aumentamos para mejor CPU y manejo de JSONs grandes
+  timeout     = 60                           # Subimos de 30 a 60 segundos
+  role        = aws_iam_role.worker_role.arn # <--- Referencia actualizada
   tracing_config {
     mode = "Active"
   }
@@ -509,6 +536,14 @@ resource "aws_iam_role_policy" "status_permissions" {
         Effect   = "Allow"
         Resource = aws_dynamodb_table.jobs_table.arn
       },
+      {
+        # AÑADIMOS: Permiso para firmar la descarga
+        Sid      = "AllowS3PresignDownload"
+        Action   = ["s3:GetObject"]
+        Effect   = "Allow"
+        Resource = "${aws_s3_bucket.uploads_bucket.arn}/exports/*"
+      },
+
       # --- NUEVO: PERMISO PARA VALIDAR JWT ---
       {
         Sid      = "AllowSSMReadJWTSecret"
