@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useState, useEffect } from "react";
 import Layout from "./components/Layout";
 import "./styles/Initiation.css"; // Reutilizamos estilos base
@@ -14,7 +13,6 @@ interface JobStatus {
 
 function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
   // 2. EFECTO DE VIGILANCIA: Sincronización con el Service Worker
