@@ -1,7 +1,7 @@
 /* 1. REGISTRO DE FUENTES (Formato OTF) */
 @font-face {
     font-family: "Brotheric";
-    src: url("../assets/fonts/Brotheric-Regular.otf") format("opentype");
+    src: url("../assets/fonts/Holitter_Gothic.ttf") format("TrueType Font");
     font-weight: normal;
     font-style: normal;
     font-display: swap;
@@ -27,7 +27,7 @@ body {
     width: 400px;
     min-height: 600px;
     /* Tenebrismo: Gradiente del centro a los bordes */
-    background: radial-gradient(circle at center, #131313 0%, #0e0e0e 100%);
+    background: radial-gradient(circle at center, #131313 0%, #1c2b1a 100%);
     color: #ffffff;
     font-family: "Wukang", sans-serif;
     -webkit-font-smoothing: antialiased;
