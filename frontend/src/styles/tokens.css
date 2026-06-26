@@ -1,0 +1,21 @@
+:root {
+  /* Voids (Niveles de negro) */
+  --bg-surface: #131313;
+  --bg-container-low: #1c1b1b;
+  --bg-container-highest: #353534;
+  --bg-void-edge: #0e0e0e;
+
+  /* Lights (Blancos y Grises) */
+  --color-primary: #ffffff;
+  --color-on-primary: #1a1c1c;
+  --color-ghost-border: rgba(71, 71, 71, 0.15);
+  --color-blood: #8b0000;
+
+  /* Typography */
+  --font-display: 'Brotheric', serif;
+  --font-body: 'Wukang', sans-serif;
+
+  /* Spacing (Asimétrico) */
+  --pad-left: 2.75rem;
+  --pad-right: 3.5rem;
+}

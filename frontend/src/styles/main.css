@@ -1,0 +1,32 @@
+@font-face {
+  font-family: 'Brotheric';
+  src: url('../assets/fonts/Brotheric-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Wukang';
+  src: url('../assets/fonts/Wukang.ttf') format('truetype');
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 0 !important; /* Regla de Oro: 0px siempre */
+}
+
+body {
+  width: 400px; /* Ancho estándar de popup */
+  min-height: 550px;
+  background: radial-gradient(circle, var(--bg-surface) 0%, var(--bg-void-edge) 100%);
+  color: var(--color-primary);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, .btn-display {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}

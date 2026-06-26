@@ -1,140 +1,76 @@
-// src/App.tsx
 import { useState, useEffect } from "react";
-import "./App.css";
-
-// Interfaz que incluye la URL de descarga (Opcional, vendrá cuando el estado sea DONE)
-interface JobStatus {
-  jobId: string;
-  status: string;
-  doneCount: number;
-  totalItems: number;
-  downloadUrl?: string;
-}
+import Layout from "./components/Layout";
+import "./styles/Initiation.css";
 
 function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // 1. SINCRONIZACIÓN: Escuchar cambios en el almacenamiento de la extensión
-  // 1. SINCRONIZACIÓN: Escuchar cambios en el almacenamiento de la extensión
   useEffect(() => {
-    // Carga inicial
-    chrome.storage.local.get(
-      ["nocturne_user", "last_job_status"],
-      (result: { [key: string]: any }) => {
-        if (result.nocturne_user) setUserEmail(result.nocturne_user);
-        if (result.last_job_status) setJob(result.last_job_status as JobStatus);
-      },
-    );
-
-    // Reaccionar a actualizaciones del Service Worker (Polling)
-    const handleStorageChange = (changes: {
-      [key: string]: chrome.storage.StorageChange;
-    }) => {
-      if (changes.nocturne_user) {
-        // ✔️ Corrección: Le indicamos a TypeScript que trate el valor como string o null
-        setUserEmail((changes.nocturne_user.newValue as string) || null);
+    // PRINCIPIO DE TYPE NARROWING:
+    // Si en la realidad física esto es un string, hazlo. Si no, ignóralo.
+    chrome.runtime.sendMessage({ action: "GET_USER" }, (res) => {
+      if (typeof res?.nocturne_user === "string") {
+        setUserEmail(res.nocturne_user);
       }
-      if (changes.last_job_status) {
-        setJob(changes.last_job_status.newValue as JobStatus);
-        setLoading(false);
-      }
-    };
-
-    chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+    });
   }, []);
 
-  // 2. COMANDOS AL MOTOR (Service Worker)
   const login = () => {
     setLoading(true);
     chrome.runtime.sendMessage({ action: "LOGIN" });
   };
 
-  const startExport = () => {
-    setLoading(true);
-    chrome.runtime.sendMessage({ action: "START_JOB", type: "EXPORT" });
-  };
+  // Si no hay usuario, mostramos la pantalla de INICIACIÓN
+  if (!userEmail) {
+    return (
+      <Layout title="THE NOCTURNE" subtitle="INITIATION">
+        <div className="initiation-content">
+          <p className="hero-text">
+            Surrender to the digital void. <br />
+            Your journey into the atmospheric abyss begins with a single
+            connection.
+          </p>
 
-  // 3. LÓGICA DE DESCARGA PROFESIONAL
-  const handleDownload = () => {
-    if (job?.downloadUrl) {
-      chrome.downloads.download({
-        url: job.downloadUrl,
-        filename: `nocturne-export-${job.jobId.substring(0, 8)}.json`,
-        saveAs: true, // Abre el diálogo de "Guardar como"
-      });
-    }
-  };
-
-  const logout = () => {
-    chrome.storage.local.clear(() => {
-      setUserEmail(null);
-      setJob(null);
-    });
-  };
-
-  return (
-    <div className="App">
-      <h1>Nocturne Dashboard</h1>
-
-      <div className="card">
-        {!userEmail ? (
-          <div className="login-section">
-            <button onClick={login} disabled={loading} className="btn-login">
-              {loading ? "Abriendo Google..." : "Conectar con Google"}
-            </button>
+          <div className="security-badge">
+            <span className="shield-icon">🛡️</span>
+            <span className="security-text">
+              VAULT SECURITY PROTOCOL ACTIVE
+            </span>
           </div>
-        ) : (
-          <div className="user-section">
-            <p className="user-info">
-              👤 <strong>{userEmail}</strong>
+
+          <button
+            className="btn-google-altar"
+            onClick={login}
+            disabled={loading}
+          >
+            <span className="google-icon">G</span>
+            <span className="btn-text">
+              {loading ? "INICIANDO..." : "CONECTAR CON GOOGLE"}
+            </span>
+            <span className="arrow-icon"></span>
+          </button>
+
+          <footer className="initiation-footer">
+            <p>
+              AL PROCEDER, RECONOCES LOS TÉRMINOS DEL PACTO DIGITAL Y NUESTRA
+              POLÍTICA DE SOMBRAS.
             </p>
-
-            {/* BIFURCACIÓN DE INTERFAZ SEGÚN ESTADO */}
-            {(!job || job.status === "FAILED") && (
-              <button
-                onClick={startExport}
-                disabled={loading}
-                className="btn-primary"
-              >
-                {loading ? "Iniciando..." : "🚀 Exportar Suscripciones"}
-              </button>
-            )}
-
-            {job && job.status === "RUNNING" && (
-              <div className="progress-container">
-                <div className="status-badge">PROCESANDO</div>
-                <p className="progress-text">
-                  Canales encontrados: {job.doneCount}
-                </p>
-                <div className="loader"></div>
-              </div>
-            )}
-
-            {job && job.status === "DONE" && (
-              <div className="success-container">
-                <div className="status-badge success">¡LISTO!</div>
-                <p>Se han exportado {job.doneCount} canales.</p>
-                <button onClick={handleDownload} className="btn-download">
-                  📥 Descargar JSON
-                </button>
-                <button onClick={startExport} className="btn-retry">
-                  Repetir
-                </button>
-              </div>
-            )}
-
-            <div className="footer-actions">
-              <button onClick={logout} className="btn-link">
-                Cerrar Sesión
-              </button>
+            <div className="footer-links">
+              <span>PRIVACIDAD</span>
+              <span>TÉRMINOS</span>
             </div>
-          </div>
-        )}
-      </div>
-    </div>
+          </footer>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Pantalla de usuario logueado (la haremos en el siguiente bloque)
+  return (
+    <Layout title="THE NOCTURNE" subtitle="RITUAL">
+      <p>Bienvenido, {userEmail}</p>
+    </Layout>
   );
 }
 
