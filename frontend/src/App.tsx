@@ -1,46 +1,41 @@
+// src/App.tsx
 import { useState, useEffect } from "react";
 import Layout from "./components/Layout";
-import "./styles/Initiation.css"; // Reutilizamos estilos base
+import "./styles/Initiation.css";
 
-// 1. CONTRATO DE DATOS: Definimos qué es un Job para TypeScript
+// 1. CONTRATO DE DATOS: Incluimos la URL de descarga opcional
 interface JobStatus {
   jobId: string;
   status: string;
   doneCount: number;
   totalItems: number;
-  downloadUrl?: string;
+  downloadUrl?: string; // <--- VITAL PARA LA DESCARGA
 }
 
 function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  //Si defines job dentro de un if, no estará disponible fuera.
-  // 2. EFECTO DE VIGILANCIA: Sincronización con el Service Worker
+
   useEffect(() => {
-    // A. Carga inicial: ¿Quién soy y qué estoy haciendo?
-    chrome.storage.local.get(["nocturne_user", "last_job_status"], (res) => {
-      if (typeof res.nocturne_user === "string") {
-        setUserEmail(res.nocturne_user);
-      }
-      if (res.last_job_status) {
-        setJob(res.last_job_status as JobStatus);
-      }
+    // Carga inicial
+    chrome.storage.local.get(["nocturne_user", "last_job_status"], (result) => {
+      if (typeof result.nocturne_user === "string")
+        setUserEmail(result.nocturne_user);
+      if (result.last_job_status) setJob(result.last_job_status as JobStatus);
     });
 
-    // B. Escucha activa: Si el Background actualiza el storage, React reacciona
+    // Escucha de cambios (Polling del Service Worker)
     const handleStorageChange = (changes: {
       [key: string]: chrome.storage.StorageChange;
     }) => {
       if (changes.nocturne_user) {
         const val = changes.nocturne_user.newValue;
-        if (typeof val === "string" || val === null) {
-          setUserEmail(val);
-        }
+        if (typeof val === "string" || val === null) setUserEmail(val);
       }
       if (changes.last_job_status) {
         setJob(changes.last_job_status.newValue as JobStatus);
-        setLoading(false); // Detenemos estados de carga si llega un update
+        setLoading(false);
       }
     };
 
@@ -48,7 +43,6 @@ function App() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
-  // 3. COMANDOS AL MOTOR (Background)
   const login = () => {
     setLoading(true);
     chrome.runtime.sendMessage({ action: "LOGIN" });
@@ -59,6 +53,19 @@ function App() {
     chrome.runtime.sendMessage({ action: "START_JOB", type: "EXPORT" });
   };
 
+  // ===========================================================================
+  // NUEVO: LÓGICA DE DESCARGA (PRINCIPIO DE ENTREGA)
+  // ===========================================================================
+  const handleDownload = () => {
+    if (job?.downloadUrl) {
+      chrome.downloads.download({
+        url: job.downloadUrl,
+        filename: `nocturne-export-${job.jobId.substring(0, 8)}.json`,
+        saveAs: true,
+      });
+    }
+  };
+
   const logout = () => {
     chrome.storage.local.clear(() => {
       setUserEmail(null);
@@ -66,39 +73,25 @@ function App() {
     });
   };
 
-  // --- RENDERIZADO: PANTALLA DE INICIACIÓN ---
   if (!userEmail) {
     return (
       <Layout title="THE NOCTURNE" subtitle="INITIATION">
         <div className="initiation-content">
-          <p className="hero-text">
-            Surrender to the digital void. <br />
-            Your journey into the atmospheric abyss begins with a single
-            connection.
-          </p>
-          <div className="security-badge">
-            <span className="shield-icon">🛡️</span>
-            <span className="security-text">
-              VAULT SECURITY PROTOCOL ACTIVE
-            </span>
-          </div>
+          <p className="hero-text">Surrender to the digital void.</p>
           <button
             className="btn-google-altar"
             onClick={login}
             disabled={loading}
           >
-            <span className="google-icon">G</span>
             <span className="btn-text">
               {loading ? "INICIANDO..." : "CONECTAR CON GOOGLE"}
             </span>
-            <span className="arrow-icon"></span>
           </button>
         </div>
       </Layout>
     );
   }
 
-  // --- RENDERIZADO: PANTALLA DE RITUAL (DASHBOARD) ---
   return (
     <Layout title="THE NOCTURNE" subtitle="RITUAL">
       <div className="initiation-content">
@@ -106,10 +99,9 @@ function App() {
           👤 <strong>{userEmail}</strong>
         </p>
 
-        {/* LÓGICA DINÁMICA SEGÚN EL ESTADO DEL TRABAJO */}
-        {!job || job.status === "DONE" || job.status === "FAILED" ? (
+        {/* CASO 1: NO HAY TRABAJO O FALLÓ */}
+        {(!job || job.status === "FAILED") && (
           <div className="action-zone">
-            <p className="hero-text">Seleccione su protocolo de transmisión</p>
             <button
               className="btn-google-altar"
               onClick={startExport}
@@ -118,21 +110,55 @@ function App() {
               <span className="btn-text">
                 {loading ? "PREPARANDO..." : "EXPORTAR SUSCRIPCIONES"}
               </span>
-              <span className="arrow-icon"></span>
             </button>
           </div>
-        ) : (
+        )}
+
+        {/* CASO 2: TRABAJO EN PROGRESO */}
+        {job && (job.status === "RUNNING" || job.status === "PENDING") && (
           <div className="progress-box">
             <div className="security-badge">
               <span className="security-text">ESTADO: {job.status}</span>
             </div>
             <h2 className="display-count">{job.doneCount}</h2>
             <p className="hero-text">CANALES PROCESADOS</p>
-            <div className="loader-line"></div>
           </div>
         )}
 
-        <button onClick={logout} className="btn-logout">
+        {/* =====================================================================
+            CASO 3: ÉXITO FINAL (EL BLOQUE QUE FALTABA)
+            ===================================================================== */}
+        {job && job.status === "DONE" && (
+          <div className="success-box">
+            <div className="security-badge success">
+              <span className="security-text">RITUAL COMPLETADO</span>
+            </div>
+            <h2 className="display-count">{job.doneCount}</h2>
+            <p className="hero-text">CANALES COSECHADOS</p>
+
+            <button
+              className="btn-google-altar"
+              onClick={handleDownload}
+              style={{ marginTop: "1rem" }}
+            >
+              <span className="btn-text">📥 DESCARGAR JSON</span>
+            </button>
+
+            <button
+              onClick={startExport}
+              className="btn-link"
+              style={{ marginTop: "1rem" }}
+            >
+              REPETIR PROCESO
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={logout}
+          className="btn-logout"
+          style={{ marginTop: "2rem" }}
+        >
           CERRAR SESIÓN
         </button>
       </div>
