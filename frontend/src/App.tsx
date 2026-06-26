@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useState, useEffect } from "react";
 import Layout from "./components/Layout";
 import "./styles/Initiation.css"; // Reutilizamos estilos base
