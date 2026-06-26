@@ -16,7 +16,7 @@ function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-
+  //Si defines job dentro de un if, no estará disponible fuera.
   // 2. EFECTO DE VIGILANCIA: Sincronización con el Service Worker
   useEffect(() => {
     // A. Carga inicial: ¿Quién soy y qué estoy haciendo?
