@@ -1,0 +1,38 @@
+.layout-root {
+  padding-left: var(--pad-left);
+  padding-right: var(--pad-right);
+  padding-top: 3rem;
+  padding-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 600px;
+}
+
+.layout-header {
+  margin-bottom: var(--gap-header-content);
+}
+
+.header-top-line {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.header-subtitle {
+  font-family: 'Space Grotesk', monospace; /* Technical feel */
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--color-primary);
+  opacity: 0.6;
+}
+
+.layout-title {
+  font-family: 'Brotheric', serif;
+  font-size: 3.5rem; /* Impacto visual */
+  font-weight: normal;
+  font-style: italic;
+  line-height: 0.9;
+  word-break: break-word;
+}

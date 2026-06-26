@@ -1,0 +1,21 @@
+:root {
+  /* Voids (Blacks) */
+  --surface-base: #131313;
+  --surface-container-low: #1c1b1b;
+  --surface-container-highest: #353534;
+  --surface-void-edge: #0e0e0e;
+
+  /* Lights (Whites) */
+  --primary: #ffffff;
+  --on-primary: #1a1c1c;
+  --outline-variant: rgba(71, 71, 71, 0.15); /* Ghost Border */
+
+  /* Accents */
+  --blood-secondary: #8b0000; /* Para errores críticos */
+
+  /* Typography */
+  --font-display: 'Newsreader', serif;
+  --font-body: 'Inter', sans-serif;
+  --font-technical: 'Space Grotesk', monospace;
+  --font-anchor: 'Fraktur', serif; /* La base medieval */
+}
