@@ -910,6 +910,14 @@ resource "aws_iam_role_policy" "resumer_permissions" {
         Action   = ["sqs:SendMessage"]
         Effect   = "Allow"
         Resource = aws_sqs_queue.jobs_queue.arn
+      },
+      #Resumer ahora tiene la capacidad de "escribir" en la tabla para que pueda sacar a los Jobs del estado de
+      # pausa legalmente
+      {
+        sid      = "AllowUpdateTable"
+        action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
+        effect   = "Allow"
+        resource = aws_dynamodb_table.jobs_table.arn # Apunta a la tabla, no al índice
       }
     ]
   })
