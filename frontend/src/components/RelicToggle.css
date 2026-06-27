@@ -1,0 +1,51 @@
+/* src/components/RelicToggle.css Crea este archivo para definir la estética de la cruz y el cuadro */
+.relic-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    user-select: none;
+}
+
+.relic-box {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--color-primary);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.relic-box.off {
+    border-color: var(--color-ghost);
+}
+
+/* La Cruz (+) interna */
+.relic-box.on::before,
+.relic-box.on::after {
+    content: "";
+    position: absolute;
+    background-color: var(--color-primary);
+}
+
+/* Línea Horizontal de la cruz */
+.relic-box.on::before {
+    width: 12px;
+    height: 2px;
+}
+
+/* Línea Vertical de la cruz */
+.relic-box.on::after {
+    width: 2px;
+    height: 12px;
+}
+
+.relic-label {
+    font-family: "Space Grotesk", monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
