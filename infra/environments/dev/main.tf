@@ -914,10 +914,10 @@ resource "aws_iam_role_policy" "resumer_permissions" {
       #Resumer ahora tiene la capacidad de "escribir" en la tabla para que pueda sacar a los Jobs del estado de
       # pausa legalmente
       {
-        sid      = "AllowUpdateTable"
-        action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
-        effect   = "Allow"
-        resource = aws_dynamodb_table.jobs_table.arn # Apunta a la tabla, no al índice
+        Sid      = "AllowUpdateTable"
+        Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.jobs_table.arn # Apunta a la tabla, no al índice
       }
     ]
   })
