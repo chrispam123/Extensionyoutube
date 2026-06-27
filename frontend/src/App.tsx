@@ -1,31 +1,33 @@
 // src/App.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Layout from "./components/Layout";
+import RelicToggle from "./components/RelicToggle";
 import "./styles/Initiation.css";
 
-// 1. CONTRATO DE DATOS: Incluimos la URL de descarga opcional
 interface JobStatus {
   jobId: string;
   status: string;
   doneCount: number;
   totalItems: number;
-  downloadUrl?: string; // <--- VITAL PARA LA DESCARGA
+  downloadUrl?: string;
 }
 
 function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [options, setOptions] = useState({ channels: true, playlists: false });
+
+  // Referencia al input de archivos oculto
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Carga inicial
     chrome.storage.local.get(["nocturne_user", "last_job_status"], (result) => {
       if (typeof result.nocturne_user === "string")
         setUserEmail(result.nocturne_user);
       if (result.last_job_status) setJob(result.last_job_status as JobStatus);
     });
 
-    // Escucha de cambios (Polling del Service Worker)
     const handleStorageChange = (changes: {
       [key: string]: chrome.storage.StorageChange;
     }) => {
@@ -53,9 +55,51 @@ function App() {
     chrome.runtime.sendMessage({ action: "START_JOB", type: "EXPORT" });
   };
 
-  // ===========================================================================
-  // NUEVO: LÓGICA DE DESCARGA (PRINCIPIO DE ENTREGA)
-  // ===========================================================================
+  // --- LÓGICA DE IMPORTACIÓN (EL PUENTE) ---
+
+  // 1. El botón dispara el selector de archivos
+  const triggerFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  // 2. Se ejecuta cuando el usuario elige el archivo
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validación de seguridad en la frontera
+    if (file.type !== "application/json" && !file.name.endsWith(".json")) {
+      alert("⚠️ El archivo debe ser un JSON sagrado.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Leemos el contenido del archivo como texto
+      const fileContent = await file.text();
+
+      // Validamos que sea un JSON válido antes de enviarlo
+      JSON.parse(fileContent);
+
+      // Enviamos la orden al Service Worker con la carga útil
+      chrome.runtime.sendMessage({
+        action: "START_JOB",
+        type: "IMPORT",
+        options,
+        payload: fileContent, // <--- Aquí viajan los datos
+      });
+    } catch (e) {
+      console.error("Error leyendo el archivo:", e);
+      alert("❌ El archivo está corrupto o no es un JSON válido.");
+      setLoading(false);
+    } finally {
+      // Limpiamos el input para permitir subir el mismo archivo otra vez si falla
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleDownload = () => {
     if (job?.downloadUrl) {
       chrome.downloads.download({
@@ -99,22 +143,64 @@ function App() {
           👤 <strong>{userEmail}</strong>
         </p>
 
-        {/* CASO 1: NO HAY TRABAJO O FALLÓ */}
-        {(!job || job.status === "FAILED") && (
-          <div className="action-zone">
-            <button
-              className="btn-google-altar"
-              onClick={startExport}
-              disabled={loading}
-            >
-              <span className="btn-text">
-                {loading ? "PREPARANDO..." : "EXPORTAR SUSCRIPCIONES"}
-              </span>
-            </button>
-          </div>
+        {(!job || job.status === "DONE" || job.status === "FAILED") && (
+          <>
+            <div className="action-zone">
+              <button
+                className="btn-google-altar"
+                onClick={startExport}
+                disabled={loading}
+              >
+                <span className="btn-text">
+                  {loading ? "PREPARANDO..." : "EXPORTAR SUSCRIPCIONES"}
+                </span>
+              </button>
+            </div>
+
+            <div className="action-zone">
+              <p className="hero-text">
+                Configure su protocolo de restauración
+              </p>
+              <div className="options-group" style={{ margin: "1.5rem 0" }}>
+                <RelicToggle
+                  label="Suscripciones"
+                  active={options.channels}
+                  onChange={() =>
+                    setOptions({ ...options, channels: !options.channels })
+                  }
+                />
+                <RelicToggle
+                  label="Playlists"
+                  active={options.playlists}
+                  onChange={() =>
+                    setOptions({ ...options, playlists: !options.playlists })
+                  }
+                />
+              </div>
+
+              {/* Input de archivos oculto */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept=".json"
+                onChange={handleFileSelect}
+              />
+
+              <button
+                className="btn-google-altar"
+                onClick={triggerFilePicker}
+                disabled={loading}
+              >
+                <span className="btn-text">
+                  {loading ? "LEYENDO..." : "INICIAR IMPORTACIÓN"}
+                </span>
+                <span className="arrow-icon"></span>
+              </button>
+            </div>
+          </>
         )}
 
-        {/* CASO 2: TRABAJO EN PROGRESO */}
         {job && (job.status === "RUNNING" || job.status === "PENDING") && (
           <div className="progress-box">
             <div className="security-badge">
@@ -125,17 +211,11 @@ function App() {
           </div>
         )}
 
-        {/* =====================================================================
-            CASO 3: ÉXITO FINAL (EL BLOQUE QUE FALTABA)
-            ===================================================================== */}
         {job && job.status === "DONE" && (
           <div className="success-box">
             <div className="security-badge success">
               <span className="security-text">RITUAL COMPLETADO</span>
             </div>
-            <h2 className="display-count">{job.doneCount}</h2>
-            <p className="hero-text">CANALES COSECHADOS</p>
-
             <button
               className="btn-google-altar"
               onClick={handleDownload}
@@ -143,13 +223,12 @@ function App() {
             >
               <span className="btn-text">📥 DESCARGAR JSON</span>
             </button>
-
             <button
-              onClick={startExport}
+              onClick={() => setJob(null)}
               className="btn-link"
               style={{ marginTop: "1rem" }}
             >
-              REPETIR PROCESO
+              VOLVER AL INICIO
             </button>
           </div>
         )}
