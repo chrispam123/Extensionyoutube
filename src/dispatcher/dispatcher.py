@@ -6,6 +6,7 @@ Component: Dispatcher Lambda
 
 import json
 import os
+
 import boto3
 from aws_lambda_powertools import Logger, Tracer
 
@@ -51,10 +52,9 @@ def lambda_handler(event, context):
                     table.update_item(
                         Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"},
                         UpdateExpression="SET #s = :val",
-                        ExpressionAttributeNames={"#s": "status"},
-                        ExpressionAttributeValues={":val": "PENDING"},
-                        # Condición: Solo si el Job ya existía en INITIALIZING
                         ConditionExpression="attribute_exists(PK) AND #s = :init",
+                        ExpressionAttributeNames={"#s": "status"},
+                        # UNIFICAMOS todos los valores en un solo diccionario
                         ExpressionAttributeValues={
                             ":val": "PENDING",
                             ":init": "INITIALIZING",
