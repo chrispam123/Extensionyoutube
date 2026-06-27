@@ -871,6 +871,95 @@ resource "aws_lambda_permission" "api_gw_auth" {
   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }
 
+#LAMBDA RESUMER, ROL Y PERMISOS Y EVENTBRIDGE
+resource "aws_iam_role" "resumer_role" {
+  name = "extension-resumer-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "resumer_permissions" {
+  name = "extension-resumer-permissions-${var.environment}"
+  role = aws_iam_role.resumer_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowLogging"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow"
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Sid    = "AllowQueryGSI"
+        Action = ["dynamodb:Query"]
+        Effect = "Allow"
+        # IMPORTANTE: El permiso debe incluir el ARN del GSI (termina en /index/StatusIndex)
+        Resource = "${aws_dynamodb_table.jobs_table.arn}/index/StatusIndex"
+      },
+      {
+        Sid      = "AllowSQSReactivate"
+        Action   = ["sqs:SendMessage"]
+        Effect   = "Allow"
+        Resource = aws_sqs_queue.jobs_queue.arn
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# 18. RESUMER: FUNCIÓN Y DISPARADOR (EVENTBRIDGE)
+# =============================================================================
+
+resource "aws_lambda_function" "resumer_lambda" {
+  function_name    = "extension-resumer-${var.environment}"
+  filename         = "${path.module}/../../../dist/resumer.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../../dist/resumer.zip")
+
+  handler = "resumer.lambda_handler"
+  runtime = "python3.12"
+  timeout = 30
+  role    = aws_iam_role.resumer_role.arn
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE       = aws_dynamodb_table.jobs_table.name
+      SQS_QUEUE_URL        = aws_sqs_queue.jobs_queue.url
+      POWERTOOLS_LOG_LEVEL = "INFO"
+    }
+  }
+}
+
+# REGLA CRON: Cada 1 hora
+resource "aws_cloudwatch_event_rule" "resumer_cron" {
+  name                = "extension-resumer-cron-${var.environment}"
+  description         = "Despierta al Resumer cada hora para reanudar jobs pausados"
+  schedule_expression = "rate(1 hour)"
+}
+
+# DESTINO: Conecta Cron con Lambda
+resource "aws_cloudwatch_event_target" "resumer_target" {
+  rule      = aws_cloudwatch_event_rule.resumer_cron.name
+  target_id = "ResumerLambda"
+  arn       = aws_lambda_function.resumer_lambda.arn
+}
+
+# PERMISO: Permite que EventBridge llame a la Lambda
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.resumer_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.resumer_cron.arn
+}
 
 
 #Xray no es un recurso es un servicio asi se uitliza

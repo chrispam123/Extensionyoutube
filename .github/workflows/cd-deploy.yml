@@ -35,7 +35,7 @@ jobs:
         run: |
           # 1. Preparar carpetas
           rm -rf dist/
-          mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth
+          mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
 
           # 2. Generar manifiesto de dependencias
           poetry export -f requirements.txt --output dist/requirements.txt
@@ -69,6 +69,11 @@ jobs:
           cp src/auth/auth_handler.py dist/auth/
           cp -r src/shared dist/auth/
           cd dist/auth && zip -r ../auth.zip . && cd ../..
+
+          # 8. Construir RESUMER
+          pip install -r dist/requirements.txt -t dist/resumer/ --ignore-installed --quiet
+          cp src/resumer/resumer.py dist/resumer/
+          cd dist/resumer && zip -r ../resumer.zip . && cd ../..
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
