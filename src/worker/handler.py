@@ -77,7 +77,6 @@ def lambda_handler(event, context):
             profile_key = {"PK": f"USER#{user_id}", "SK": "PROFILE"}
 
             # B. RECUPERAR ESTADO DESDE EL CEREBRO (DynamoDB)
-            # Necesitamos el perfil para el token y el job para el progreso
             profile_item = table.get_item(Key=profile_key).get("Item", {})
             job_item = table.get_item(Key=job_key).get("Item", {})
 
@@ -108,7 +107,6 @@ def lambda_handler(event, context):
 
             yt = YouTubeClient(access_token)
 
-            # Inicializamos contadores para este relevo específico
             success_count = 0
             failed_count = 0
             next_token_to_save = None
@@ -126,17 +124,28 @@ def lambda_handler(event, context):
                     s3_res = s3.get_object(Bucket=bucket_name, Key=s3_key)
                     raw_data = json.loads(s3_res["Body"].read().decode("utf-8"))
 
-                    # Filtrado por opciones: Construimos la lista de trabajo real
-                    work_list = []
-                    if isinstance(raw_data, list):
-                        work_list = raw_data  # Retrocompatibilidad con lista plana
-                    else:
-                        if options.get("channels"):
-                            work_list.extend(raw_data.get("channels", []))
-                        if options.get("playlists"):
-                            work_list.extend(raw_data.get("playlists", []))
+                    # --- VALIDACIÓN DE CONSISTENCIA ---
+                    # Verificamos que el archivo tenga un formato procesable
+                    if not isinstance(raw_data, list) and "channels" not in raw_data:
+                        logger.error(
+                            "❌ Formato de archivo S3 inválido para importación."
+                        )
+                        table.update_item(
+                            Key=job_key,
+                            UpdateExpression="SET #s = :f",
+                            ExpressionAttributeNames={"#s": "status"},
+                            ExpressionAttributeValues={":f": "FAILED"},
+                        )
+                        continue
 
-                    # Puntero de lectura: doneCount + failedCount nos dice por dónde vamos
+                    # Filtrado por opciones
+                    work_list = (
+                        raw_data
+                        if isinstance(raw_data, list)
+                        else raw_data.get("channels", [])
+                    )
+
+                    # Puntero de lectura: doneCount + failedCount
                     start_index = int(job_item.get("doneCount", 0)) + int(
                         job_item.get("failedCount", 0)
                     )
@@ -150,10 +159,19 @@ def lambda_handler(event, context):
 
                     for item in batch:
                         try:
-                            # LLAMADA REAL A YOUTUBE (Aquí se consume la cuota de 50 unidades)
-                            # yt.subscribe_to_channel(item['channelId'])
+                            # LLAMADA REAL A YOUTUBE
+                            yt.subscribe_to_channel(item["channelId"])
                             logger.info(f"✅ Vinculado: {item.get('title')}")
                             success_count += 1
+
+                        # --- RE-LANZAMIENTO INMEDIATO DE CUOTA ---
+                        # Evitamos que el 'except Exception' de abajo capture la cuota agotada
+                        except QuotaExceededError as qe:
+                            logger.warning(
+                                "🛑 Cuota agotada en mitad del lote. Elevando excepción..."
+                            )
+                            raise qe
+
                         except Exception as e:
                             logger.error(
                                 f"❌ Error en item {item.get('title')}: {str(e)}"
@@ -188,7 +206,6 @@ def lambda_handler(event, context):
                             }
                         )
 
-                    # Acumulación persistente en S3
                     s3_key = f"exports/{user_id}/{job_id}.json"
                     accumulated = []
                     try:
@@ -216,7 +233,6 @@ def lambda_handler(event, context):
                 # =================================================================
                 now = datetime.datetime.now(datetime.UTC).isoformat()
 
-                # Actualizamos contadores y estado en una sola operación
                 table.update_item(
                     Key=job_key,
                     UpdateExpression="SET #s = :run, nextPageToken = :next, updatedAt = :now ADD doneCount :s, failedCount :f",
@@ -245,9 +261,9 @@ def lambda_handler(event, context):
                     )
 
             except QuotaExceededError:
-                # CAPTURA DE CUOTA: El corazón de la resiliencia
+                # CAPTURA DE CUOTA: Pausamos el Job para el Resumer
                 logger.warning(
-                    f"⚠️ Límite de Google alcanzado para Job {job_id}. Entrando en hibernación."
+                    f"⚠️ Límite de Google alcanzado para Job {job_id}. Hibernando."
                 )
                 table.update_item(
                     Key=job_key,
@@ -262,6 +278,6 @@ def lambda_handler(event, context):
 
         except Exception as e:
             logger.exception(f"🔥 Fallo crítico en el Worker: {str(e)}")
-            raise e  # SQS reintentará según la política de la cola
+            raise e
 
     return {"status": "processed"}

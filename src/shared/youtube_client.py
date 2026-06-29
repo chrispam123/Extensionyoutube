@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-# errores de cuota y token acceso expirado
 import httpx
-from shared.exceptions import QuotaExceededError, InvalidTokenError
+
+from shared.exceptions import InvalidTokenError, QuotaExceededError
 
 
 class YouTubeClient:
@@ -9,22 +9,11 @@ class YouTubeClient:
         self.base_url = "https://www.googleapis.com/youtube/v3"
         self.headers = {"Authorization": f"Bearer {access_token}"}
 
-    def get_subscriptions(self, max_results=50, page_token=None):
-        """
-        Obtiene la lista de suscripciones del usuario.
-        """
-        url = f"{self.base_url}/subscriptions"
-        params = {"part": "snippet", "mine": "true", "maxResults": max_results}
-        if page_token:
-            params["pageToken"] = page_token
-
-        with httpx.Client(timeout=10.0) as client:
-            response = client.get(url, headers=self.headers, params=params)
-
-        if response.status_code == 200:
+    def _handle_response(self, response):
+        """Centraliza la detección de errores de cuota y tokens."""
+        if response.status_code == 200 or response.status_code == 201:
             return response.json()
 
-        # --- MAPEO DE ERRORES (EL SENSOR) ---
         error_data = response.json().get("error", {})
         error_reason = error_data.get("errors", [{}])[0].get("reason")
 
@@ -32,6 +21,32 @@ class YouTubeClient:
             raise QuotaExceededError("Límite de cuota de YouTube alcanzado")
 
         if response.status_code == 401:
-            raise InvalidTokenError("El Access Token ha expirado o es inválido")
+            raise InvalidTokenError("Token expirado o inválido")
 
         response.raise_for_status()
+
+    def get_subscriptions(self, max_results=50, page_token=None):
+        url = f"{self.base_url}/subscriptions"
+        params = {"part": "snippet", "mine": "true", "maxResults": max_results}
+        if page_token:
+            params["pageToken"] = page_token
+
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url, headers=self.headers, params=params)
+            return self._handle_response(response)
+
+    def subscribe_to_channel(self, channel_id: str):
+        """
+        Crea una nueva suscripción en YouTube.
+        Coste de cuota: 50 unidades.
+        """
+        url = f"{self.base_url}/subscriptions"
+        params = {"part": "snippet"}
+        body = {
+            "snippet": {
+                "resourceId": {"kind": "youtube#channel", "channelId": channel_id}
+            }
+        }
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(url, headers=self.headers, params=params, json=body)
+            return self._handle_response(response)
