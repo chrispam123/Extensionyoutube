@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import RelicToggle from "./components/RelicToggle";
 import "./styles/Initiation.css";
 
+// 1. CONTRATO DE DATOS: Definición de la forma del Job
 interface JobStatus {
   jobId: string;
   status: string;
@@ -17,16 +18,22 @@ function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // [NUEVO] ESTADO DE OPCIONES: Controla la intención del usuario
   const [options, setOptions] = useState({ channels: true, playlists: false });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 2. SINCRONIZACIÓN SISTÉMICA
   useEffect(() => {
+    // Carga inicial: ¿Quién soy y en qué estado está mi último trabajo?
     chrome.storage.local.get(["nocturne_user", "last_job_status"], (result) => {
       if (typeof result.nocturne_user === "string")
         setUserEmail(result.nocturne_user);
       if (result.last_job_status) setJob(result.last_job_status as JobStatus);
     });
 
+    // Escucha activa: Reaccionar a los cambios que el Service Worker hace en el storage
     const handleStorageChange = (changes: {
       [key: string]: chrome.storage.StorageChange;
     }) => {
@@ -36,7 +43,7 @@ function App() {
       }
       if (changes.last_job_status) {
         setJob(changes.last_job_status.newValue as JobStatus);
-        setLoading(false);
+        setLoading(false); // Liberamos el estado de carga cuando llega una actualización
       }
     };
 
@@ -44,6 +51,7 @@ function App() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
+  // 3. ACCIONES DE PROTOCOLO
   const login = () => {
     setLoading(true);
     chrome.runtime.sendMessage({ action: "LOGIN" });
@@ -63,10 +71,13 @@ function App() {
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
     setLoading(true);
     try {
       const fileContent = await file.text();
-      JSON.parse(fileContent);
+      JSON.parse(fileContent); // Validación rápida de integridad
+
+      // Enviamos la orden de IMPORTACIÓN con la carga útil y las opciones elegidas
       chrome.runtime.sendMessage({
         action: "START_JOB",
         type: "IMPORT",
@@ -74,8 +85,10 @@ function App() {
         payload: fileContent,
       });
     } catch (e) {
-      alert("Archivo inválido");
+      alert("El archivo no es un JSON sagrado válido.");
       setLoading(false);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -96,7 +109,7 @@ function App() {
     });
   };
 
-  // --- PANTALLA INICIAL ---
+  // --- RENDER: PANTALLA DE INICIACIÓN ---
   if (!userEmail) {
     return (
       <Layout title="THE NOCTURNE" subtitle="INITIATION">
@@ -108,7 +121,7 @@ function App() {
             disabled={loading}
           >
             <span className="btn-text">
-              {loading ? "INICIANDO..." : "CONECTAR CON GOOGLE"}
+              {loading ? "ABRIENDO PUERTA..." : "CONECTAR CON GOOGLE"}
             </span>
           </button>
         </div>
@@ -116,6 +129,7 @@ function App() {
     );
   }
 
+  // --- RENDER: PANTALLA DE RITUAL (DASHBOARD) ---
   return (
     <Layout
       title="THE NOCTURNE"
@@ -126,8 +140,8 @@ function App() {
           👤 <strong>{userEmail}</strong>
         </p>
 
-        {/* ESTADO 1: MENÚ PRINCIPAL (Sin trabajos activos) */}
-        {(!job || job.status === "FAILED") && (
+        {/* ESTADO: MENÚ DE ACCIONES (Solo si no hay trabajo activo) */}
+        {(!job || job.status === "DONE" || job.status === "FAILED") && (
           <div className="action-zone-container">
             <div className="action-zone">
               <button
@@ -139,9 +153,11 @@ function App() {
               </button>
             </div>
 
-            <div className="action-zone" style={{ marginTop: "2rem" }}>
+            <div className="action-zone" style={{ marginTop: "2.5rem" }}>
               <p className="hero-text">Protocolo de Restauración</p>
-              <div className="options-group" style={{ margin: "1rem 0" }}>
+
+              {/* [CORREGIDO] GRUPO DE SELECCIÓN DUAL */}
+              <div className="options-group" style={{ margin: "1.2rem 0" }}>
                 <RelicToggle
                   label="Canales"
                   active={options.channels}
@@ -149,7 +165,15 @@ function App() {
                     setOptions({ ...options, channels: !options.channels })
                   }
                 />
+                <RelicToggle
+                  label="Playlists"
+                  active={options.playlists}
+                  onChange={() =>
+                    setOptions({ ...options, playlists: !options.playlists })
+                  }
+                />
               </div>
+
               <input
                 type="file"
                 ref={fileInputRef}
@@ -157,19 +181,22 @@ function App() {
                 accept=".json"
                 onChange={handleFileSelect}
               />
+
               <button
                 className="btn-google-altar"
                 onClick={triggerFilePicker}
-                disabled={loading}
+                disabled={loading || (!options.channels && !options.playlists)}
               >
-                <span className="btn-text">INICIAR IMPORTACIÓN</span>
+                <span className="btn-text">
+                  {loading ? "LEYENDO..." : "INICIAR IMPORTACIÓN"}
+                </span>
                 <span className="arrow-icon"></span>
               </button>
             </div>
           </div>
         )}
 
-        {/* ESTADO 2: PROCESANDO (Común para ambos) */}
+        {/* ESTADO: PROCESANDO (Visualización de la Máquina de Estados) */}
         {job &&
           (job.status === "RUNNING" ||
             job.status === "PENDING" ||
@@ -184,38 +211,32 @@ function App() {
             </div>
           )}
 
-        {/* ESTADO 3: ÉXITO (Bifurcado por Tipo) */}
+        {/* ESTADO: ÉXITO FINAL (Bifurcado por tipo de Job) */}
         {job && job.status === "DONE" && (
-          <div className="success-box">
+          <div
+            className="success-box"
+            style={{
+              borderTop: "1px solid var(--color-ghost)",
+              paddingTop: "1.5rem",
+            }}
+          >
             {job.type === "EXPORT" ? (
               <>
                 <div className="security-badge success">
                   <span className="security-text">COSECHA COMPLETADA</span>
                 </div>
-                <h2 className="display-count">{job.doneCount}</h2>
-                <p className="hero-text">CANALES EXTRAÍDOS</p>
                 <button
                   className="btn-google-altar"
                   onClick={handleDownload}
-                  style={{ marginTop: "1.5rem" }}
+                  style={{ marginTop: "1rem" }}
                 >
                   <span className="btn-text">📥 DESCARGAR JSON</span>
                 </button>
               </>
             ) : (
-              <>
-                <div className="security-badge success">
-                  <span className="security-text">RESTAURACIÓN COMPLETADA</span>
-                </div>
-                <h2 className="display-count">{job.doneCount}</h2>
-                <p className="hero-text">VÍNCULOS ESTABLECIDOS</p>
-                <p
-                  className="hero-text"
-                  style={{ fontSize: "0.7rem", opacity: 0.6 }}
-                >
-                  Los canales han sido integrados en su nueva cuenta.
-                </p>
-              </>
+              <div className="security-badge success">
+                <span className="security-text">RESTAURACIÓN COMPLETADA</span>
+              </div>
             )}
 
             <button
