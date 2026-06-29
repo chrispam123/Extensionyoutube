@@ -39,7 +39,9 @@ async function handleLogin(sendResponse: (response: object) => void) {
       `client_id=${CLIENT_ID}&` +
       `response_type=code&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `scope=${encodeURIComponent("openid email https://www.googleapis.com/auth/youtube.readonly")}&` +
+      // CAMBIO: Usamos force-ssl para permitir suscripciones (escritura)nvalidación de Sesión. Al cambiar el scope, los tokens antiguos en DynamoDB ya no sirven para importar.
+      // Debes cerrar sesión en la extensión y volver a entrar para generar un token con el nuevo scope
+      `scope=${encodeURIComponent("openid email https://www.googleapis.com/auth/youtube.force-ssl")}&` +
       `access_type=offline&prompt=consent`;
 
     const responseUrl = await chrome.identity.launchWebAuthFlow({
