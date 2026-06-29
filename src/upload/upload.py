@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
+import datetime
 import json
 import os
+import time  # NUEVO: Para el cálculo del TTL
 import uuid
-import boto3
-import datetime
-from aws_lambda_powertools import Logger, Tracer
-from shared.responses import cors_response, get_cors_headers
-from shared.auth import decode_nocturne_jwt
 
-# 1. Configuración de Observabilidad
+import boto3
+from aws_lambda_powertools import Logger, Tracer
+
+from shared.auth import decode_nocturne_jwt
+from shared.responses import cors_response, get_cors_headers
+
 logger = Logger()
 tracer = Tracer()
 
-# 2. Inicialización de Clientes (Warm Start)
-RAW_ENDPOINT = os.getenv("AWS_ENDPOINT_URL")
-ENDPOINT_URL = RAW_ENDPOINT if RAW_ENDPOINT and RAW_ENDPOINT.strip() else None
+# Clientes AWS (Warm Start)
+ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
+if not ENDPOINT_URL or not ENDPOINT_URL.strip():
+    ENDPOINT_URL = None
 
 ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
 dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
@@ -25,44 +28,32 @@ s3 = boto3.client("s3", endpoint_url=ENDPOINT_URL)
 @logger.inject_lambda_context
 @tracer.capture_lambda_handler
 def lambda_handler(event, context):
-    # --- GUARDIA CORS (OPTIONS) ---
-    method = event.get("requestContext", {}).get("http", {}).get("method")
-    if method == "OPTIONS":
+    if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
         return {"statusCode": 200, "headers": get_cors_headers()}
 
     table = dynamo.Table(os.getenv("DYNAMODB_TABLE"))
 
     try:
-        # 3. VALIDACIÓN DE IDENTIDAD
-        logger.info("🔐 Validando identidad del usuario...")
+        # 1. VALIDACIÓN DE IDENTIDAD
         auth_header = event.get("headers", {}).get("authorization", "")
-        if not auth_header.startswith("Bearer "):
-            logger.warning("⚠️ Petición sin cabecera de autorización válida")
-            return cors_response(401, {"error": "No autorizado"})
-
-        token = auth_header.split(" ")[1]
-
-        # Recuperamos el secreto de firma (Aquí es donde necesitamos el permiso de SSM)
-        logger.info("🔍 Recuperando JWT_SECRET desde SSM...")
+        token = auth_header.split(" ")[1] if " " in auth_header else ""
         jwt_secret = ssm.get_parameter(
             Name="/extension/auth/jwt_secret", WithDecryption=True
         )["Parameter"]["Value"]
+        decoded = decode_nocturne_jwt(token, jwt_secret)
+        user_id = decoded["sub"]
 
-        try:
-            decoded = decode_nocturne_jwt(token, jwt_secret)
-            user_id = decoded["sub"]
-            logger.info(f"👤 Usuario identificado: {user_id}")
-        except Exception as e:
-            logger.warning(f"❌ Token inválido o expirado: {str(e)}")
-            return cors_response(401, {"error": "Sesión inválida"})
+        # 2. PARSEO DE OPCIONES
+        body = json.loads(event.get("body", "{}"))
+        job_type = body.get("type", "EXPORT").upper()
+        # NUEVO: Capturamos las opciones del frontend (canales/playlists)
+        options = body.get("options", {"channels": True, "playlists": False})
 
-        # 4. CHECK DE TRABAJOS ACTIVOS (Idempotencia)
-        logger.info(f"🔎 Buscando trabajos activos para el usuario {user_id}...")
+        # 3. CHECK DE TRABAJOS ACTIVOS (Evitar duplicados)
         active_jobs = table.query(
             KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues={":pk": f"USER#{user_id}", ":sk": "JOB#"},
         )
-
         for job in active_jobs.get("Items", []):
             if job.get("status") in [
                 "INITIALIZING",
@@ -70,26 +61,17 @@ def lambda_handler(event, context):
                 "RUNNING",
                 "PAUSED_QUOTA",
             ]:
-                logger.info(
-                    f"🚫 Conflicto detectado: Job {job['jobId']} ya está activo."
-                )
                 return cors_response(
-                    409,
-                    {
-                        "error": "Ya tienes un proceso en marcha",
-                        "jobId": job.get("jobId"),
-                    },
+                    409, {"error": "Ya tienes un proceso activo", "jobId": job["jobId"]}
                 )
 
-        # 5. CREACIÓN DE NUEVO TRABAJO
+        # 4. GENERACIÓN DE IDENTIDAD Y TTL
         job_id = str(uuid.uuid4())
-        body = json.loads(event.get("body", "{}"))
-        job_type = body.get("type", "EXPORT").upper()
-
         initial_status = "INITIALIZING" if job_type == "IMPORT" else "PENDING"
-        logger.info(f"🆕 Creando nuevo Job {job_id} de tipo {job_type}")
+        # NUEVO: El registro se borrará solo en 2 horas si se queda en INITIALIZING
+        expires_at = int(time.time()) + (2 * 3600)
 
-        # Registro en DynamoDB
+        # 5. REGISTRO EN DYNAMODB
         table.put_item(
             Item={
                 "PK": f"USER#{user_id}",
@@ -97,19 +79,18 @@ def lambda_handler(event, context):
                 "jobId": job_id,
                 "userId": user_id,
                 "type": job_type,
+                "options": options,  # NUEVO: Persistimos la intención
                 "status": initial_status,
+                "expiresAt": expires_at,  # NUEVO: Fusible de autolimpieza
                 "doneCount": 0,
+                "failedCount": 0,  # NUEVO: Contador de errores reales
                 "createdAt": datetime.datetime.now(datetime.UTC).isoformat(),
             }
         )
 
-        # 6. BIFURCACIÓN DE FLUJO
+        # 6. BIFURCACIÓN
         response_data = {"jobId": job_id, "type": job_type}
-
         if job_type == "IMPORT":
-            logger.info(
-                f"📦 Generando Presigned URL para importación en Job {job_id}..."
-            )
             s3_key = f"uploads/{user_id}/{job_id}.json"
             upload_url = s3.generate_presigned_url(
                 ClientMethod="put_object",
@@ -122,7 +103,6 @@ def lambda_handler(event, context):
             )
             response_data["uploadUrl"] = upload_url
         else:
-            logger.info(f"🚀 Enviando orden de exportación a SQS para Job {job_id}...")
             sqs.send_message(
                 QueueUrl=os.getenv("SQS_QUEUE_URL"),
                 MessageBody=json.dumps(
@@ -130,9 +110,8 @@ def lambda_handler(event, context):
                 ),
             )
 
-        logger.info(f"✅ Job {job_id} iniciado con éxito.")
         return cors_response(201, response_data)
 
     except Exception as e:
-        logger.exception(f"🔥 Error crítico en el Iniciador: {str(e)}")
+        logger.exception("Error en Iniciador")
         return cors_response(500, {"error": "Internal Server Error"})

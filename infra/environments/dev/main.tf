@@ -13,6 +13,13 @@ resource "aws_dynamodb_table" "jobs_table" {
   # name = "jobId"
   # type = "S" # String
   #}
+  #
+  # --- NUEVO: ACTIVAR EL RELOJ DE LIMPIEZA ---
+  ttl {
+    attribute_name = "expiresAt" # DynamoDB mirará este campo
+    enabled        = true
+  }
+
   attribute {
     name = "PK"
     type = "S"

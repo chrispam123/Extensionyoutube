@@ -47,13 +47,19 @@ def lambda_handler(event, context):
             return cors_response(404, {"error": "Trabajo no encontrado"})
 
         status = item.get("status")
+        job_type = item.get("type")
 
         # 4. CONTRATO DE RESPUESTA BASE
         data = {
-            "jobId": item.get("jobId"),
+            "jobId": job_id,
             "status": status,
-            "doneCount": int(item.get("doneCount", 0)),
-            "type": item.get("type"),  # <--- ESTA ES LA LÍNEA CRÍTICA QUE FALTABA
+            "type": job_type,
+            "doneCount": int(
+                item.get("doneCount", 0)
+            ),  # nuevo transparencia total el conteo
+            "failedCount": int(
+                item.get("failedCount", 0)
+            ),  # nuevo transparencia total el conteo
             "updatedAt": item.get("updatedAt"),
         }
 
@@ -63,7 +69,12 @@ def lambda_handler(event, context):
         if status == "DONE":
             logger.info(f"🎁 Job {job_id} finalizado. Generando URL de descarga...")
             bucket_name = os.getenv("S3_BUCKET")
-            s3_key = f"exports/{user_id}/{job_id}.json"
+            # Si es EXPORT, el resultado está en exports/. Si es IMPORT, el origen está en uploads/.
+            s3_key = (
+                f"exports/{user_id}/{job_id}.json"
+                if job_type == "EXPORT"
+                else f"uploads/{user_id}/{job_id}.json"
+            )
 
             download_url = s3.generate_presigned_url(
                 ClientMethod="get_object",
