@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import json
 import os
+
 import boto3
 from aws_lambda_powertools import Logger
-from shared.responses import cors_response, get_cors_headers
+
 from shared.auth import decode_nocturne_jwt
+from shared.responses import cors_response, get_cors_headers
 
 logger = Logger()
 
@@ -51,6 +53,7 @@ def lambda_handler(event, context):
             "jobId": item.get("jobId"),
             "status": status,
             "doneCount": int(item.get("doneCount", 0)),
+            "type": item.get("type"),  # <--- ESTA ES LA LÍNEA CRÍTICA QUE FALTABA
             "updatedAt": item.get("updatedAt"),
         }
 
