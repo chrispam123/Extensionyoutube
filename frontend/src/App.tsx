@@ -1,4 +1,4 @@
-// src/App.tsx
+// src/App.tsx - Versión Final con Selección Dual Restaurada
 import { useState, useEffect, useRef } from "react";
 import Layout from "./components/Layout";
 import RelicToggle from "./components/RelicToggle";
@@ -115,7 +115,6 @@ function App() {
   }
 
   // --- 2. PANTALLA DE ÉXITO (CONCLUDED) ---
-  // Prioridad alta: Si el trabajo terminó, mostramos esto y nada más.
   if (job && job.status === "DONE") {
     return (
       <Layout title="THE NOCTURNE" subtitle="CONCLUDED">
@@ -195,7 +194,6 @@ function App() {
   }
 
   // --- 4. PANTALLA DE MENÚ PRINCIPAL (IDLE) ---
-  // Si llegamos aquí es porque userEmail existe y job es null o FAILED
   return (
     <Layout title="THE NOCTURNE" subtitle="RITUAL">
       <div className="initiation-content">
@@ -216,6 +214,8 @@ function App() {
 
           <div className="action-zone" style={{ marginTop: "2.5rem" }}>
             <p className="hero-text">Protocolo de Restauración</p>
+
+            {/* RESTAURADO: SELECCIÓN DUAL */}
             <div className="options-group" style={{ margin: "1.2rem 0" }}>
               <RelicToggle
                 label="Canales"
@@ -224,7 +224,15 @@ function App() {
                   setOptions({ ...options, channels: !options.channels })
                 }
               />
+              <RelicToggle
+                label="Playlists"
+                active={options.playlists}
+                onChange={() =>
+                  setOptions({ ...options, playlists: !options.playlists })
+                }
+              />
             </div>
+
             <input
               type="file"
               ref={fileInputRef}
@@ -235,7 +243,7 @@ function App() {
             <button
               className="btn-google-altar"
               onClick={triggerFilePicker}
-              disabled={loading}
+              disabled={loading || (!options.channels && !options.playlists)}
             >
               <span className="btn-text">INICIAR IMPORTACIÓN</span>
               <span className="arrow-icon"></span>
