@@ -70,6 +70,11 @@ async function handleLogin(sendResponse: (response: object) => void) {
         nocturne_user: data.user,
       });
       sendResponse({ success: true, user: data.user });
+    } else {
+      sendResponse({
+        success: false,
+        error: data.error || "Error del servidor",
+      });
     }
   } catch (error) {
     console.error("Error en Login:", error);

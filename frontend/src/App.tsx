@@ -1,15 +1,19 @@
-// src/App.tsx - Versión Final con Selección Dual Restaurada
+// src/App.tsx
 import { useState, useEffect, useRef } from "react";
 import Layout from "./components/Layout";
 import RelicToggle from "./components/RelicToggle";
 import "./styles/Initiation.css";
 
+// 1. CONTRATO DE DATOS ACTUALIZADO (Espejo del Backend)
 interface JobStatus {
   jobId: string;
   status: string;
   doneCount: number;
+  failedCount: number; // <--- NUEVO
   totalItems: number;
   type: string;
+  currentPlaylist?: number; // <--- NUEVO (Opcional para Export)
+  currentVideo?: number; // <--- NUEVO (Opcional para Export)
   downloadUrl?: string;
 }
 
@@ -32,7 +36,10 @@ function App() {
     }) => {
       if (changes.nocturne_user) {
         const val = changes.nocturne_user.newValue;
-        if (typeof val === "string" || val === null) setUserEmail(val);
+        if (typeof val === "string" || val === null) {
+          setUserEmail(val);
+          setLoading(false);
+        }
       }
       if (changes.last_job_status) {
         setJob(changes.last_job_status.newValue as JobStatus);
@@ -46,7 +53,11 @@ function App() {
 
   const login = () => {
     setLoading(true);
-    chrome.runtime.sendMessage({ action: "LOGIN" });
+    chrome.runtime.sendMessage({ action: "LOGIN" }, (response) => {
+      if (!response?.success) {
+        setLoading(false);
+      }
+    });
   };
 
   const startExport = () => {
@@ -94,7 +105,6 @@ function App() {
     });
   };
 
-  // --- 1. PANTALLA DE INICIACIÓN (LOGIN) ---
   if (!userEmail) {
     return (
       <Layout title="THE NOCTURNE" subtitle="INITIATION">
@@ -114,7 +124,7 @@ function App() {
     );
   }
 
-  // --- 2. PANTALLA DE ÉXITO (CONCLUDED) ---
+  // --- PANTALLA DE ÉXITO ---
   if (job && job.status === "DONE") {
     return (
       <Layout title="THE NOCTURNE" subtitle="CONCLUDED">
@@ -131,7 +141,16 @@ function App() {
               </span>
             </div>
             <h2 className="display-count">{job.doneCount}</h2>
-            <p className="hero-text">ELEMENTOS PROCESADOS</p>
+            <p className="hero-text">EXITOSOS</p>
+
+            {job.failedCount > 0 && (
+              <p
+                className="error-text"
+                style={{ color: "var(--color-blood)", fontSize: "0.8rem" }}
+              >
+                {job.failedCount} ELEMENTOS RECHAZADOS
+              </p>
+            )}
 
             {job.type === "EXPORT" && job.downloadUrl && (
               <button
@@ -159,7 +178,7 @@ function App() {
     );
   }
 
-  // --- 3. PANTALLA DE PROGRESO (RUNNING / PENDING) ---
+  // --- PANTALLA DE PROGRESO ---
   if (
     job &&
     (job.status === "RUNNING" ||
@@ -177,8 +196,26 @@ function App() {
             <div className="security-badge">
               <span className="security-text">ESTADO: {job.status}</span>
             </div>
+
+            {/* Visualización de progreso de Playlists si aplica */}
+            {job.type === "IMPORT" && job.currentPlaylist !== undefined && (
+              <p
+                className="technical-label"
+                style={{ fontSize: "0.7rem", opacity: 0.6 }}
+              >
+                PROCESANDO PLAYLIST: {job.currentPlaylist + 1}
+              </p>
+            )}
+
             <h2 className="display-count">{job.doneCount}</h2>
-            <p className="hero-text">CANALES PROCESADOS</p>
+            <p className="hero-text">VÍNCULOS ESTABLECIDOS</p>
+
+            {job.failedCount > 0 && (
+              <p style={{ color: "var(--color-blood)", fontSize: "0.7rem" }}>
+                {job.failedCount} FALLIDOS
+              </p>
+            )}
+
             <div className="loader-line"></div>
           </div>
           <button
@@ -193,7 +230,7 @@ function App() {
     );
   }
 
-  // --- 4. PANTALLA DE MENÚ PRINCIPAL (IDLE) ---
+  // --- MENÚ PRINCIPAL ---
   return (
     <Layout title="THE NOCTURNE" subtitle="RITUAL">
       <div className="initiation-content">
@@ -214,8 +251,6 @@ function App() {
 
           <div className="action-zone" style={{ marginTop: "2.5rem" }}>
             <p className="hero-text">Protocolo de Restauración</p>
-
-            {/* RESTAURADO: SELECCIÓN DUAL */}
             <div className="options-group" style={{ margin: "1.2rem 0" }}>
               <RelicToggle
                 label="Canales"
@@ -232,7 +267,6 @@ function App() {
                 }
               />
             </div>
-
             <input
               type="file"
               ref={fileInputRef}

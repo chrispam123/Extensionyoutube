@@ -54,12 +54,11 @@ def lambda_handler(event, context):
             "jobId": job_id,
             "status": status,
             "type": job_type,
-            "doneCount": int(
-                item.get("doneCount", 0)
-            ),  # nuevo transparencia total el conteo
-            "failedCount": int(
-                item.get("failedCount", 0)
-            ),  # nuevo transparencia total el conteo
+            "doneCount": int(item.get("doneCount", 0)),
+            "failedCount": int(item.get("failedCount", 0)),
+            # NUEVOS CAMPOS PARA LA UI
+            "currentPlaylist": int(item.get("currentPlaylistIndex", 0)),
+            "currentVideo": int(item.get("currentVideoIndex", 0)),
             "updatedAt": item.get("updatedAt"),
         }
 

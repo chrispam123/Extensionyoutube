@@ -50,3 +50,31 @@ class YouTubeClient:
         with httpx.Client(timeout=10.0) as client:
             response = client.post(url, headers=self.headers, params=params, json=body)
             return self._handle_response(response)
+
+    def create_playlist(self, title: str, description: str = ""):
+        """Crea una carpeta de playlist. Coste: 50 unidades."""
+        url = f"{self.base_url}/playlists"
+        body = {
+            "snippet": {"title": title, "description": description},
+            "status": {"privacyStatus": "private"},  # Por seguridad, nacen privadas
+        }
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                url, headers=self.headers, params={"part": "snippet,status"}, json=body
+            )
+            return self._handle_response(response)
+
+    def add_video_to_playlist(self, playlist_id: str, video_id: str):
+        """Inserta un video en una playlist. Coste: 50 unidades."""
+        url = f"{self.base_url}/playlistItems"
+        body = {
+            "snippet": {
+                "playlistId": playlist_id,
+                "resourceId": {"kind": "youtube#video", "videoId": video_id},
+            }
+        }
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                url, headers=self.headers, params={"part": "snippet"}, json=body
+            )
+            return self._handle_response(response)
