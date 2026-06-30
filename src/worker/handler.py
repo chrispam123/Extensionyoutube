@@ -195,7 +195,7 @@ def lambda_handler(event, context):
                 # FASE 2: PLAYLISTS (Placeholder para implementación real)
                 elif options.get("playlists"):
                     logger.info(f"📤 Cosechando Playlists (Índice {curr_pl_idx})...")
-                    # Aquí iría la lógica de yt.get_playlists()
+                    # Aquí iría la lógica de yt.get_playlists() de momento no deja importar las playlists
                     has_more = False
 
                 s3.put_object(

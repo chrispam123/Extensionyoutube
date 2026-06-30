@@ -46,7 +46,6 @@ def lambda_handler(event, context):
         # 2. PARSEO DE OPCIONES
         body = json.loads(event.get("body", "{}"))
         job_type = body.get("type", "EXPORT").upper()
-        # NUEVO: Capturamos las opciones del frontend (canales/playlists)
         options = body.get("options", {"channels": True, "playlists": False})
 
         # 3. CHECK DE TRABAJOS ACTIVOS (Evitar duplicados)
@@ -62,8 +61,17 @@ def lambda_handler(event, context):
                 "PAUSED_QUOTA",
             ]:
                 return cors_response(
-                    409, {"error": "Ya tienes un proceso activo", "jobId": job["jobId"]}
+                    409,
+                    {
+                        "error": "Ya tienes un proceso activo",
+                        "jobId": job["jobId"],
+                        "status": job["status"],
+                    },
                 )
+
+        # [NUEVO]: SYNC_CHECK es solo un escaneo, nunca crea trabajo
+        if job_type == "SYNC_CHECK":
+            return cors_response(200, {"active": False})
 
         # 4. GENERACIÓN DE IDENTIDAD Y TTL
         job_id = str(uuid.uuid4())

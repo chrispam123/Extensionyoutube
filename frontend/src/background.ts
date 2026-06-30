@@ -1,5 +1,5 @@
 // src/background.ts
-// Motor de fondo de Nocturne - Arquitectura de Persistencia
+// Motor de fondo de Nocturne - Arquitectura de Persistencia y Resiliencia
 
 // 1. CONFIGURACIÓN (Inyectada por Vite/GitHub Actions)
 const API_URL = import.meta.env.VITE_API_URL;
@@ -13,7 +13,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return true;
 
     case "START_JOB":
-      // [NUEVO]: Ahora pasamos también las opciones y la carga útil (archivo)
       handleStartJob(
         message.type,
         message.options,
@@ -39,8 +38,6 @@ async function handleLogin(sendResponse: (response: object) => void) {
       `client_id=${CLIENT_ID}&` +
       `response_type=code&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      // CAMBIO: Usamos force-ssl para permitir suscripciones (escritura)nvalidación de Sesión. Al cambiar el scope, los tokens antiguos en DynamoDB ya no sirven para importar.
-      // Debes cerrar sesión en la extensión y volver a entrar para generar un token con el nuevo scope
       `scope=${encodeURIComponent("openid email https://www.googleapis.com/auth/youtube.force-ssl")}&` +
       `access_type=offline&prompt=consent`;
 
@@ -65,10 +62,16 @@ async function handleLogin(sendResponse: (response: object) => void) {
 
     const data = await res.json();
     if (res.ok) {
+      // Guardamos la sesión
       await chrome.storage.local.set({
         nocturne_token: data.token,
         nocturne_user: data.user,
       });
+
+      // [NUEVO]: Sincronización inmediata tras el login
+      // Intentamos ver si el usuario dejó algún trabajo a medias en la nube
+      await syncActiveJob();
+
       sendResponse({ success: true, user: data.user });
     } else {
       sendResponse({
@@ -82,7 +85,16 @@ async function handleLogin(sendResponse: (response: object) => void) {
   }
 }
 
-// 4. LÓGICA DE INICIO DE TRABAJO (Doble Salto para Importación)
+// [NUEVO]: Función de Sincronización (El Apretón de Manos)
+async function syncActiveJob() {
+  console.log("🔍 Sincronizando estado con la nube...");
+  // Llamamos a handleStartJob con tipo SYNC_CHECK.
+  // - Si hay un job activo → 409 → se activa el polling
+  // - Si no hay nada → 200 → no se hace nada
+  await handleStartJob("SYNC_CHECK", {}, null, () => {});
+}
+
+// 4. LÓGICA DE INICIO DE TRABAJO (Con manejo de 409 Conflict)
 async function handleStartJob(
   type: string,
   options: object,
@@ -91,8 +103,8 @@ async function handleStartJob(
 ) {
   try {
     const { nocturne_token } = await chrome.storage.local.get("nocturne_token");
+    if (!nocturne_token) return;
 
-    // PASO 1: Registrar el Job en AWS y obtener URL si es IMPORT
     const res = await fetch(`${API_URL}/jobs`, {
       method: "POST",
       headers: {
@@ -104,37 +116,48 @@ async function handleStartJob(
 
     const data = await res.json();
 
-    if (!res.ok) {
-      sendResponse({ success: false, error: data.error });
+    // SYNC_CHECK sin trabajo activo: 200, no hay nada que hacer
+    if (type === "SYNC_CHECK" && res.status === 200) {
+      sendResponse({ success: true, active: false });
       return;
     }
 
-    // PASO 2: Si es IMPORT, subimos el archivo directamente a S3(para q haga el trabajo pesado) no pasa por apigateway
-    // Manejo de payload: El contenido del archivo viaja del Popup al Service Worker y de ahí a S3. Es un flujo de memoria eficiente porque el archivo JSON
-    // de suscripciones no suele pesar más de unos pocos megabytes.
-    if (type === "IMPORT" && data.uploadUrl && payload) {
-      console.log("📦 Iniciando subida directa a S3...");
-      const s3Res = await fetch(data.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: payload, // El contenido del JSON que leyó el Popup
-      });
+    // [MODIFICADO]: Tratamos el 201 (Creado) y el 409 (Ya existe) como éxitos de flujo
+    if (res.ok || res.status === 409) {
+      const jobId = data.jobId;
 
-      if (!s3Res.ok) {
-        throw new Error("Fallo al subir el archivo al búnker S3");
+      if (res.status === 409) {
+        console.log(`♻️ Recuperando Job existente: ${jobId}`);
       }
-      console.log("✅ Archivo entregado a S3 con éxito.");
+
+      // Si es un IMPORT nuevo (201), subimos el archivo
+      if (
+        res.status === 201 &&
+        type === "IMPORT" &&
+        data.uploadUrl &&
+        payload
+      ) {
+        await fetch(data.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        });
+      }
+
+      // Anclamos el ID en el storage y activamos el Polling
+      await chrome.storage.local.set({ active_job_id: jobId });
+      chrome.alarms.create("poll-status", { periodInMinutes: 1 });
+
+      // Primer check inmediato para actualizar la UI de React
+      checkJobStatus(jobId);
+
+      sendResponse({ success: true, jobId: jobId });
+    } else {
+      sendResponse({ success: false, error: data.error });
     }
-
-    // PASO 3: Activar el Polling de estado
-    await chrome.storage.local.set({ active_job_id: data.jobId });
-    chrome.alarms.create("poll-status", { periodInMinutes: 1 });
-    checkJobStatus(data.jobId);
-
-    sendResponse({ success: true, jobId: data.jobId });
   } catch (error) {
-    console.error("Error iniciando Job:", error);
-    sendResponse({ success: false, error: "Error en la transmisión" });
+    console.error("Error iniciando/sincronizando Job:", error);
+    sendResponse({ success: false, error: "Error de comunicación" });
   }
 }
 
@@ -155,6 +178,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 async function checkJobStatus(jobId: string) {
   try {
     const { nocturne_token } = await chrome.storage.local.get("nocturne_token");
+    if (!nocturne_token) return;
+
     const res = await fetch(`${API_URL}/status/${jobId}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${nocturne_token}` },
@@ -163,13 +188,15 @@ async function checkJobStatus(jobId: string) {
     const data = await res.json();
     if (res.ok) {
       await chrome.storage.local.set({ last_job_status: data });
+
       if (data.status === "DONE" || data.status === "FAILED") {
         chrome.alarms.clear("poll-status");
         chrome.storage.local.remove("active_job_id");
+
         chrome.notifications.create({
           type: "basic",
           iconUrl: "vite.svg",
-          title: "Nocturne Update",
+          title: "Nocturne Ritual",
           message: `El proceso ha finalizado: ${data.status}`,
         });
       }
