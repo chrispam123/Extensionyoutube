@@ -4,16 +4,15 @@ import Layout from "./components/Layout";
 import RelicToggle from "./components/RelicToggle";
 import "./styles/Initiation.css";
 
-// 1. CONTRATO DE DATOS ACTUALIZADO (Espejo del Backend)
 interface JobStatus {
   jobId: string;
   status: string;
   doneCount: number;
-  failedCount: number; // <--- NUEVO
+  failedCount: number;
   totalItems: number;
   type: string;
-  currentPlaylist?: number; // <--- NUEVO (Opcional para Export)
-  currentVideo?: number; // <--- NUEVO (Opcional para Export)
+  currentPlaylist?: number;
+  currentVideo?: number;
   downloadUrl?: string;
 }
 
@@ -21,7 +20,10 @@ function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // 1. CONFIGURACIÓN GLOBAL: Rige tanto para Cosecha como para Restauración
   const [options, setOptions] = useState({ channels: true, playlists: false });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -53,16 +55,19 @@ function App() {
 
   const login = () => {
     setLoading(true);
-    chrome.runtime.sendMessage({ action: "LOGIN" }, (response) => {
-      if (!response?.success) {
-        setLoading(false);
-      }
+    chrome.runtime.sendMessage({ action: "LOGIN" }, (res) => {
+      if (!res?.success) setLoading(false);
     });
   };
 
+  // 2. EXPORTACIÓN CORREGIDA: Ahora envía las opciones
   const startExport = () => {
     setLoading(true);
-    chrome.runtime.sendMessage({ action: "START_JOB", type: "EXPORT" });
+    chrome.runtime.sendMessage({
+      action: "START_JOB",
+      type: "EXPORT",
+      options, // <--- AHORA SÍ SE ENVÍAN
+    });
   };
 
   const triggerFilePicker = () => fileInputRef.current?.click();
@@ -141,17 +146,7 @@ function App() {
               </span>
             </div>
             <h2 className="display-count">{job.doneCount}</h2>
-            <p className="hero-text">EXITOSOS</p>
-
-            {job.failedCount > 0 && (
-              <p
-                className="error-text"
-                style={{ color: "var(--color-blood)", fontSize: "0.8rem" }}
-              >
-                {job.failedCount} ELEMENTOS RECHAZADOS
-              </p>
-            )}
-
+            <p className="hero-text">ELEMENTOS PROCESADOS</p>
             {job.type === "EXPORT" && job.downloadUrl && (
               <button
                 className="btn-google-altar"
@@ -161,7 +156,6 @@ function App() {
                 <span className="btn-text">📥 DESCARGAR JSON</span>
               </button>
             )}
-
             <button
               onClick={() => setJob(null)}
               className="btn-link"
@@ -196,26 +190,8 @@ function App() {
             <div className="security-badge">
               <span className="security-text">ESTADO: {job.status}</span>
             </div>
-
-            {/* Visualización de progreso de Playlists si aplica */}
-            {job.type === "IMPORT" && job.currentPlaylist !== undefined && (
-              <p
-                className="technical-label"
-                style={{ fontSize: "0.7rem", opacity: 0.6 }}
-              >
-                PROCESANDO PLAYLIST: {job.currentPlaylist + 1}
-              </p>
-            )}
-
             <h2 className="display-count">{job.doneCount}</h2>
             <p className="hero-text">VÍNCULOS ESTABLECIDOS</p>
-
-            {job.failedCount > 0 && (
-              <p style={{ color: "var(--color-blood)", fontSize: "0.7rem" }}>
-                {job.failedCount} FALLIDOS
-              </p>
-            )}
-
             <div className="loader-line"></div>
           </div>
           <button
@@ -230,7 +206,7 @@ function App() {
     );
   }
 
-  // --- MENÚ PRINCIPAL ---
+  // --- MENÚ PRINCIPAL (IDLE) ---
   return (
     <Layout title="THE NOCTURNE" subtitle="RITUAL">
       <div className="initiation-content">
@@ -238,35 +214,50 @@ function App() {
           👤 <strong>{userEmail}</strong>
         </p>
 
-        <div className="action-zone-container">
+        {/* 3. ZONA GLOBAL DE CONFIGURACIÓN (Mantenida arriba) */}
+        <div
+          className="global-options"
+          style={{
+            borderBottom: "1px solid var(--color-ghost)",
+            paddingBottom: "1.5rem",
+          }}
+        >
+          <p
+            className="hero-text"
+            style={{ fontSize: "0.8rem", marginBottom: "1rem" }}
+          >
+            Configuración del Ritual
+          </p>
+          <div className="options-group">
+            <RelicToggle
+              label="Canales"
+              active={options.channels}
+              onChange={() =>
+                setOptions({ ...options, channels: !options.channels })
+              }
+            />
+            <RelicToggle
+              label="Playlists"
+              active={options.playlists}
+              onChange={() =>
+                setOptions({ ...options, playlists: !options.playlists })
+              }
+            />
+          </div>
+        </div>
+
+        <div className="action-zone-container" style={{ marginTop: "1.5rem" }}>
           <div className="action-zone">
             <button
               className="btn-google-altar"
               onClick={startExport}
-              disabled={loading}
+              disabled={loading || (!options.channels && !options.playlists)}
             >
-              <span className="btn-text">EXPORTAR SUSCRIPCIONES</span>
+              <span className="btn-text">COSECHAR (EXPORTAR)</span>
             </button>
           </div>
 
-          <div className="action-zone" style={{ marginTop: "2.5rem" }}>
-            <p className="hero-text">Protocolo de Restauración</p>
-            <div className="options-group" style={{ margin: "1.2rem 0" }}>
-              <RelicToggle
-                label="Canales"
-                active={options.channels}
-                onChange={() =>
-                  setOptions({ ...options, channels: !options.channels })
-                }
-              />
-              <RelicToggle
-                label="Playlists"
-                active={options.playlists}
-                onChange={() =>
-                  setOptions({ ...options, playlists: !options.playlists })
-                }
-              />
-            </div>
+          <div className="action-zone" style={{ marginTop: "2rem" }}>
             <input
               type="file"
               ref={fileInputRef}
@@ -279,7 +270,7 @@ function App() {
               onClick={triggerFilePicker}
               disabled={loading || (!options.channels && !options.playlists)}
             >
-              <span className="btn-text">INICIAR IMPORTACIÓN</span>
+              <span className="btn-text">RESTAURAR (IMPORTAR)</span>
               <span className="arrow-icon"></span>
             </button>
           </div>

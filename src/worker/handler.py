@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Project: Nocturne Backend
-Component: Worker Lambda
-Purpose: Full Import/Export engine with Playlist support and Single Table Design.
-"""
-
 import datetime
 import json
 import os
@@ -21,7 +15,6 @@ from shared.youtube_client import YouTubeClient
 logger = Logger()
 tracer = Tracer()
 
-# 1. Inicialización de Clientes (Warm Start)
 RAW_ENDPOINT = os.getenv("AWS_ENDPOINT_URL")
 ENDPOINT_URL = RAW_ENDPOINT if RAW_ENDPOINT and RAW_ENDPOINT.strip() else None
 
@@ -53,19 +46,13 @@ def lambda_handler(event, context):
     bucket_name = os.getenv("S3_BUCKET")
 
     for record in event.get("Records", []):
-        # ---------------------------------------------------------------
-        # Estas variables deben ser accesibles desde los bloques except
-        # exteriores (QuotaExceededError usa job_key)
-        # ---------------------------------------------------------------
         job_key = None
-
         try:
             payload = json.loads(record["body"])
             job_id, user_id = payload.get("jobId"), payload.get("userId")
             job_key = {"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"}
             profile_key = {"PK": f"USER#{user_id}", "SK": "PROFILE"}
 
-            # A. RECUPERAR ESTADO COMPLETO
             profile_item = table.get_item(Key=profile_key).get("Item", {})
             job_item = table.get_item(Key=job_key).get("Item", {})
 
@@ -75,13 +62,11 @@ def lambda_handler(event, context):
 
             job_type = job_item.get("type", "EXPORT")
             options = job_item.get("options", {"channels": True, "playlists": False})
-
-            # Punteros de Playlist
             curr_pl_idx = int(job_item.get("currentPlaylistIndex", 0))
             curr_vid_idx = int(job_item.get("currentVideoIndex", 0))
             active_pl_id = job_item.get("activePlaylistId")
+            next_page_token = job_item.get("nextPageToken")
 
-            # B. AUTENTICACIÓN
             cid, csec = get_google_secrets()
             refresh_token = decrypt_token(
                 kms_client, profile_item.get("encryptedRefreshToken")
@@ -92,7 +77,6 @@ def lambda_handler(event, context):
             success_count = 0
             failed_count = 0
             has_more = False
-            next_page_token = job_item.get("nextPageToken")
 
             # =================================================================
             # C. LÓGICA DE IMPORTACIÓN (SIEMBRA)
@@ -103,9 +87,8 @@ def lambda_handler(event, context):
                 )
                 raw_data = json.loads(s3_res["Body"].read().decode("utf-8"))
 
-                # --- VALIDACIÓN DE FORMATO ---
                 if not isinstance(raw_data, (list, dict)):
-                    logger.error("❌ Formato de archivo S3 inválido para importación.")
+                    logger.error("❌ Formato S3 inválido")
                     table.update_item(
                         Key=job_key,
                         UpdateExpression="SET #s = :f, updatedAt = :now",
@@ -118,70 +101,45 @@ def lambda_handler(event, context):
                     continue
 
                 channels = (
-                    raw_data.get("channels", [])
-                    if isinstance(raw_data, dict)
-                    else raw_data
+                    raw_data
+                    if isinstance(raw_data, list)
+                    else raw_data.get("channels", [])
                 )
                 playlists = (
                     raw_data.get("playlists", []) if isinstance(raw_data, dict) else []
                 )
 
-                # FASE 1: CANALES
-                total_processed_channels = int(job_item.get("doneCount", 0)) + int(
+                total_processed = int(job_item.get("doneCount", 0)) + int(
                     job_item.get("failedCount", 0)
                 )
 
-                if options.get("channels") and total_processed_channels < len(channels):
-                    logger.info(
-                        f"🚜 Procesando Canales (Lote desde {total_processed_channels})"
-                    )
-                    batch = channels[
-                        total_processed_channels : total_processed_channels + 10
-                    ]
+                if options.get("channels") and total_processed < len(channels):
+                    batch = channels[total_processed : total_processed + 10]
                     for chan in batch:
                         try:
-                            yt.subscribe_to_channel(
-                                chan["channelId"]
-                            )  # aqui suscribimos a youtubereal
+                            yt.subscribe_to_channel(chan["channelId"])
                             success_count += 1
                         except QuotaExceededError:
                             raise
                         except Exception:
                             failed_count += 1
-
-                    # Solo hay más trabajo si quedan canales por procesar O si
-                    # las playlists están activadas Y realmente existen
-                    more_channels = (total_processed_channels + len(batch)) < len(
-                        channels
+                    has_more = (total_processed + len(batch)) < len(channels) or (
+                        options.get("playlists") and len(playlists) > 0
                     )
-                    more_playlists = options.get("playlists") and len(playlists) > 0
-                    has_more = more_channels or more_playlists
 
-                # FASE 2: PLAYLISTS (Solo si terminamos canales o no había)
                 elif options.get("playlists") and curr_pl_idx < len(playlists):
-                    logger.info(f"📜 Procesando Playlists (Índice {curr_pl_idx})")
                     current_pl = playlists[curr_pl_idx]
-
-                    # 1. Crear la playlist si no existe en este relevo
                     if not active_pl_id:
-                        logger.info(f"✨ Creando nueva playlist: {current_pl['title']}")
                         pl_resp = yt.create_playlist(current_pl["title"])
                         active_pl_id = pl_resp["id"]
-                        # Guardamos el ID inmediatamente para no duplicar
                         table.update_item(
                             Key=job_key,
                             UpdateExpression="SET activePlaylistId = :id",
                             ExpressionAttributeValues={":id": active_pl_id},
                         )
 
-                    # 2. Añadir videos en lotes de 10
                     videos = current_pl.get("videos", [])
                     batch_vids = videos[curr_vid_idx : curr_vid_idx + 10]
-                    logger.info(
-                        f"🎬 Añadiendo videos {curr_vid_idx} al "
-                        f"{curr_vid_idx + len(batch_vids)}"
-                    )
-
                     for vid_id in batch_vids:
                         try:
                             yt.add_video_to_playlist(active_pl_id, vid_id)
@@ -192,43 +150,18 @@ def lambda_handler(event, context):
                             failed_count += 1
 
                     curr_vid_idx += len(batch_vids)
-
-                    # 3. ¿Terminamos esta playlist?
                     if curr_vid_idx >= len(videos):
                         curr_pl_idx += 1
                         curr_vid_idx = 0
-                        active_pl_id = None  # Reset para la siguiente
-
+                        active_pl_id = None
                     has_more = curr_pl_idx < len(playlists)
 
             # =================================================================
-            # D. LÓGICA DE EXPORTACIÓN (COSECHA)
+            # D. LÓGICA DE EXPORTACIÓN (COSECHA EN DOS FASES)
             # =================================================================
             else:
-                logger.info("📤 Iniciando COSECHA (Export)")
-                yt_res = yt.get_subscriptions(
-                    max_results=50, page_token=next_page_token
-                )
-                items = yt_res.get("items", [])
-                next_page_token = yt_res.get("nextPageToken")
-
-                new_data = []
-                for item in items:
-                    snippet = item.get("snippet", {})
-                    new_data.append(
-                        {
-                            "id": item.get("id"),
-                            "title": snippet.get("title"),
-                            "channelId": snippet.get("resourceId", {}).get("channelId"),
-                            "thumbnail": snippet.get("thumbnails", {})
-                            .get("default", {})
-                            .get("url"),
-                        }
-                    )
-
-                # Acumulación persistente en S3
                 s3_key = f"exports/{user_id}/{job_id}.json"
-                accumulated = []
+                accumulated = {"channels": [], "playlists": []}
                 try:
                     existing = s3.get_object(Bucket=bucket_name, Key=s3_key)
                     accumulated = json.loads(existing["Body"].read().decode("utf-8"))
@@ -236,7 +169,35 @@ def lambda_handler(event, context):
                     if e.response["Error"]["Code"] != "NoSuchKey":
                         raise
 
-                accumulated.extend(new_data)
+                # FASE 1: CANALES
+                if options.get("channels") and next_page_token != "CHANNELS_DONE":
+                    logger.info("📤 Cosechando Canales...")
+                    yt_res = yt.get_subscriptions(
+                        max_results=50, page_token=next_page_token
+                    )
+                    for item in yt_res.get("items", []):
+                        snippet = item.get("snippet", {})
+                        accumulated["channels"].append(
+                            {
+                                "id": item.get("id"),
+                                "title": snippet.get("title"),
+                                "channelId": snippet.get("resourceId", {}).get(
+                                    "channelId"
+                                ),
+                            }
+                        )
+                    success_count = len(yt_res.get("items", []))
+                    next_page_token = yt_res.get("nextPageToken") or "CHANNELS_DONE"
+                    has_more = (next_page_token != "CHANNELS_DONE") or options.get(
+                        "playlists"
+                    )
+
+                # FASE 2: PLAYLISTS (Placeholder para implementación real)
+                elif options.get("playlists"):
+                    logger.info(f"📤 Cosechando Playlists (Índice {curr_pl_idx})...")
+                    # Aquí iría la lógica de yt.get_playlists()
+                    has_more = False
+
                 s3.put_object(
                     Bucket=bucket_name,
                     Key=s3_key,
@@ -244,55 +205,36 @@ def lambda_handler(event, context):
                     ContentType="application/json",
                 )
 
-                success_count = len(new_data)
-                has_more = next_page_token is not None
-
             # =================================================================
             # E. ACTUALIZACIÓN DE ESTADO FINAL
             # =================================================================
             now = datetime.datetime.now(datetime.UTC).isoformat()
 
-            # Construimos la expresión dinámicamente: si active_pl_id es None
-            # usamos REMOVE, si tiene valor usamos SET.
-            # DynamoDB no acepta None en ExpressionAttributeValues.
-            if active_pl_id is not None:
-                update_expr = (
-                    "SET #s = :run, nextPageToken = :next, updatedAt = :now, "
-                    "currentPlaylistIndex = :cpi, currentVideoIndex = :cvi, "
-                    "activePlaylistId = :api "
-                    "ADD doneCount :s, failedCount :f"
-                )
-                expr_values = {
-                    ":run": "RUNNING",
-                    ":next": next_page_token,
-                    ":s": success_count,
-                    ":f": failed_count,
-                    ":now": now,
-                    ":cpi": curr_pl_idx,
-                    ":cvi": curr_vid_idx,
-                    ":api": active_pl_id,
-                }
-            else:
-                update_expr = (
-                    "SET #s = :run, nextPageToken = :next, updatedAt = :now, "
-                    "currentPlaylistIndex = :cpi, currentVideoIndex = :cvi "
-                    "REMOVE activePlaylistId "
-                    "ADD doneCount :s, failedCount :f"
-                )
-                expr_values = {
-                    ":run": "RUNNING",
-                    ":next": next_page_token,
-                    ":s": success_count,
-                    ":f": failed_count,
-                    ":now": now,
-                    ":cpi": curr_pl_idx,
-                    ":cvi": curr_vid_idx,
-                }
+            # Construcción dinámica de la expresión para evitar errores con None
+            update_expr = "SET #s = :run, nextPageToken = :next, updatedAt = :now, currentPlaylistIndex = :cpi, currentVideoIndex = :cvi"
+            expr_attr_names = {"#s": "status"}
+            expr_values = {
+                ":run": "RUNNING",
+                ":next": next_page_token,
+                ":now": now,
+                ":cpi": curr_pl_idx,
+                ":cvi": curr_vid_idx,
+            }
+
+            if active_pl_id:
+                update_expr += ", activePlaylistId = :api"
+                expr_values[":api"] = active_pl_id
+            elif job_item.get("activePlaylistId") is not None:
+                update_expr += " REMOVE activePlaylistId"
+
+            update_expr += " ADD doneCount :s, failedCount :f"
+            expr_values[":s"] = success_count
+            expr_values[":f"] = failed_count
 
             table.update_item(
                 Key=job_key,
                 UpdateExpression=update_expr,
-                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeNames=expr_attr_names,
                 ExpressionAttributeValues=expr_values,
             )
 
@@ -303,15 +245,11 @@ def lambda_handler(event, context):
                     Key=job_key,
                     UpdateExpression="SET #s = :done, updatedAt = :now",
                     ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={
-                        ":done": "DONE",
-                        ":now": datetime.datetime.now(datetime.UTC).isoformat(),
-                    },
+                    ExpressionAttributeValues={":done": "DONE", ":now": now},
                 )
 
         except QuotaExceededError:
-            # job_key puede ser None si el mensaje SQS estaba mal formado
-            if job_key is not None:
+            if job_key:
                 table.update_item(
                     Key=job_key,
                     UpdateExpression="SET #s = :p, updatedAt = :now",
