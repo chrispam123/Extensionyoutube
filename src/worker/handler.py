@@ -68,6 +68,17 @@ def lambda_handler(event, context):
             active_pl_id = job_item.get("activePlaylistId")
             next_page_token = job_item.get("nextPageToken")
 
+            logger.info(
+                "🚀 Worker iniciando relevo",
+                extra={
+                    "job_id": job_id,
+                    "user_id": user_id,
+                    "type": job_type,
+                    "done_count": int(job_item.get("doneCount", 0)),
+                    "failed_count": int(job_item.get("failedCount", 0)),
+                },
+            )
+
             cid, csec = get_google_secrets()
             refresh_token = decrypt_token(
                 kms_client, profile_item.get("encryptedRefreshToken")
@@ -117,13 +128,30 @@ def lambda_handler(event, context):
 
                 if options.get("channels") and total_processed < len(channels):
                     batch = channels[total_processed : total_processed + 10]
+                    logger.info(
+                        f"🚜 Procesando lote de canales",
+                        extra={
+                            "job_id": job_id,
+                            "batch_start": total_processed,
+                            "batch_end": total_processed + len(batch),
+                            "total_channels": len(channels),
+                        },
+                    )
                     for chan in batch:
                         try:
                             yt.subscribe_to_channel(chan["channelId"])
                             success_count += 1
                         except QuotaExceededError:
                             raise
-                        except Exception:
+                        except Exception as exc:
+                            logger.warning(
+                                f"⚠️ Fallo al suscribir canal",
+                                extra={
+                                    "job_id": job_id,
+                                    "channel_title": chan.get("title"),
+                                    "error": str(exc),
+                                },
+                            )
                             failed_count += 1
                     has_more = (total_processed + len(batch)) < len(channels) or (
                         options.get("playlists") and len(playlists) > 0
@@ -131,6 +159,15 @@ def lambda_handler(event, context):
 
                 elif options.get("playlists") and curr_pl_idx < len(playlists):
                     current_pl = playlists[curr_pl_idx]
+                    logger.info(
+                        f"📜 Procesando playlist",
+                        extra={
+                            "job_id": job_id,
+                            "playlist_index": curr_pl_idx,
+                            "playlist_title": current_pl.get("title"),
+                            "total_playlists": len(playlists),
+                        },
+                    )
                     if not active_pl_id:
                         pl_resp = yt.create_playlist(current_pl["title"])
                         active_pl_id = pl_resp["id"]
@@ -148,7 +185,16 @@ def lambda_handler(event, context):
                             success_count += 1
                         except QuotaExceededError:
                             raise
-                        except Exception:
+                        except Exception as exc:
+                            logger.warning(
+                                f"⚠️ Fallo al añadir video",
+                                extra={
+                                    "job_id": job_id,
+                                    "playlist_id": active_pl_id,
+                                    "video_id": vid_id,
+                                    "error": str(exc),
+                                },
+                            )
                             failed_count += 1
 
                     curr_vid_idx += len(batch_vids)
@@ -173,7 +219,13 @@ def lambda_handler(event, context):
 
                 # FASE 1: CANALES
                 if options.get("channels") and next_page_token != "CHANNELS_DONE":
-                    logger.info("📤 Cosechando Canales...")
+                    logger.info(
+                        "📤 Cosechando Canales...",
+                        extra={
+                            "job_id": job_id,
+                            "page_token": next_page_token or "(initial)",
+                        },
+                    )
                     yt_res = yt.get_subscriptions(
                         max_results=50, page_token=next_page_token
                     )
@@ -245,8 +297,21 @@ def lambda_handler(event, context):
             )
 
             if has_more:
+                logger.info(
+                    "🔄 Re-encolando siguiente relevo",
+                    extra={"job_id": job_id, "user_id": user_id},
+                )
                 sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(payload))
             else:
+                logger.info(
+                    "🏁 Trabajo completado",
+                    extra={
+                        "job_id": job_id,
+                        "total_done": int(job_item.get("doneCount", 0)) + success_count,
+                        "total_failed": int(job_item.get("failedCount", 0))
+                        + failed_count,
+                    },
+                )
                 table.update_item(
                     Key=job_key,
                     UpdateExpression="SET #s = :done, expiresAt = :ttl, updatedAt = :now",
