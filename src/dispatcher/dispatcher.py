@@ -4,8 +4,10 @@ Project: Nocturne Backend
 Component: Dispatcher Lambda
 """
 
+import datetime
 import json
 import os
+import time
 
 import boto3
 from aws_lambda_powertools import Logger, Tracer
@@ -51,13 +53,14 @@ def lambda_handler(event, context):
                 try:
                     table.update_item(
                         Key={"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"},
-                        UpdateExpression="SET #s = :val",
+                        UpdateExpression="SET #s = :val, expiresAt = :ttl, updatedAt = :now",
                         ConditionExpression="attribute_exists(PK) AND #s = :init",
                         ExpressionAttributeNames={"#s": "status"},
-                        # UNIFICAMOS todos los valores en un solo diccionario
                         ExpressionAttributeValues={
                             ":val": "PENDING",
                             ":init": "INITIALIZING",
+                            ":ttl": int(time.time()) + (10 * 86400),
+                            ":now": datetime.datetime.now(datetime.UTC).isoformat(),
                         },
                     )
                     logger.info(f"Estado cambiado a PENDING para {job_id}")

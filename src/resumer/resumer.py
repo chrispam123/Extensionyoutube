@@ -61,14 +61,14 @@ def lambda_handler(event, context):
                 ),
             )
 
-            # 3. ACTUALIZAR ESTADO A PENDING
-            # Lo sacamos de PAUSED_QUOTA para que no lo vuelva a pillar el Resumer
+            # 3. ACTUALIZAR ESTADO A PENDING (con TTL de 10 días)
             table.update_item(
                 Key={"PK": job["PK"], "SK": job["SK"]},
-                UpdateExpression="SET #s = :new_status, updatedAt = :now",
+                UpdateExpression="SET #s = :new_status, expiresAt = :ttl, updatedAt = :now",
                 ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={
                     ":new_status": "PENDING",
+                    ":ttl": int(time.time()) + (10 * 86400),
                     ":now": datetime.datetime.now(datetime.UTC).isoformat(),
                 },
             )

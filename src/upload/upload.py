@@ -76,8 +76,11 @@ def lambda_handler(event, context):
         # 4. GENERACIÓN DE IDENTIDAD Y TTL
         job_id = str(uuid.uuid4())
         initial_status = "INITIALIZING" if job_type == "IMPORT" else "PENDING"
-        # NUEVO: El registro se borrará solo en 2 horas si se queda en INITIALIZING
-        expires_at = int(time.time()) + (2 * 3600)
+        # TTL por estado inicial: IMPORT espera archivo (4h), EXPORT ya está listo (10d)
+        TTL_4H = 4 * 3600
+        TTL_10D = 10 * 86400
+        now_unix = int(time.time())
+        expires_at = now_unix + (TTL_4H if job_type == "IMPORT" else TTL_10D)
 
         # 5. REGISTRO EN DYNAMODB
         table.put_item(

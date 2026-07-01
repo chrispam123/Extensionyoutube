@@ -2,6 +2,7 @@
 import datetime
 import json
 import os
+import time
 
 import boto3
 from aws_lambda_powertools import Logger, Tracer
@@ -91,10 +92,11 @@ def lambda_handler(event, context):
                     logger.error("❌ Formato S3 inválido")
                     table.update_item(
                         Key=job_key,
-                        UpdateExpression="SET #s = :f, updatedAt = :now",
+                        UpdateExpression="SET #s = :f, expiresAt = :ttl, updatedAt = :now",
                         ExpressionAttributeNames={"#s": "status"},
                         ExpressionAttributeValues={
                             ":f": "FAILED",
+                            ":ttl": int(time.time()) + (6 * 86400),
                             ":now": datetime.datetime.now(datetime.UTC).isoformat(),
                         },
                     )
@@ -227,6 +229,10 @@ def lambda_handler(event, context):
             elif job_item.get("activePlaylistId") is not None:
                 update_expr += " REMOVE activePlaylistId"
 
+            # TTL para RUNNING: 6 días de vida mientras esté activo
+            update_expr += ", expiresAt = :ttl"
+            expr_values[":ttl"] = int(time.time()) + (6 * 86400)
+
             update_expr += " ADD doneCount :s, failedCount :f"
             expr_values[":s"] = success_count
             expr_values[":f"] = failed_count
@@ -243,19 +249,24 @@ def lambda_handler(event, context):
             else:
                 table.update_item(
                     Key=job_key,
-                    UpdateExpression="SET #s = :done, updatedAt = :now",
+                    UpdateExpression="SET #s = :done, expiresAt = :ttl, updatedAt = :now",
                     ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={":done": "DONE", ":now": now},
+                    ExpressionAttributeValues={
+                        ":done": "DONE",
+                        ":ttl": int(time.time()) + (6 * 86400),
+                        ":now": now,
+                    },
                 )
 
         except QuotaExceededError:
             if job_key:
                 table.update_item(
                     Key=job_key,
-                    UpdateExpression="SET #s = :p, updatedAt = :now",
+                    UpdateExpression="SET #s = :p, expiresAt = :ttl, updatedAt = :now",
                     ExpressionAttributeNames={"#s": "status"},
                     ExpressionAttributeValues={
                         ":p": "PAUSED_QUOTA",
+                        ":ttl": int(time.time()) + (10 * 86400),
                         ":now": datetime.datetime.now(datetime.UTC).isoformat(),
                     },
                 )
