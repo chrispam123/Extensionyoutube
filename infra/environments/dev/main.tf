@@ -242,10 +242,7 @@ resource "aws_lambda_function" "worker_lambda" {
   memory_size = 256                          # Aumentamos para mejor CPU y manejo de JSONs grandes
   timeout     = 60                           # Subimos de 30 a 60 segundos
   role        = aws_iam_role.worker_role.arn # <--- Referencia actualizada
-  # --- SOLUCIÓN AL BLOQUEO DE RECURSIVIDAD ---
-  # Permite que la Lambda se auto-invoque vía SQS más de 16 veces.
-  # Requiere AWS Provider v5.x
-  recursive_loop = "Allow"
+
 
   tracing_config {
     mode = "Active"
@@ -1005,7 +1002,16 @@ resource "aws_iam_role_policy_attachment" "dispatcher_xray" {
   role       = aws_iam_role.dispatcher_role.name
   policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
 }
-
+# =============================================================================
+# 19. CONFIGURACIÓN DE RECURSIVIDAD (Standalone Resource)
+# =============================================================================
+# --- SOLUCIÓN AL BLOQUEO DE RECURSIVIDAD ---
+# Permite que la Lambda se auto-invoque vía SQS más de 16 veces.
+# Requiere AWS Provider v5.x
+resource "aws_lambda_function_recursion_config" "worker_recursion" {
+  function_name  = aws_lambda_function.worker_lambda.function_name
+  recursive_loop = "Allow"
+}
 
 # OUTPUT: La URL que usará el React
 output "api_url" {
