@@ -242,9 +242,15 @@ resource "aws_lambda_function" "worker_lambda" {
   memory_size = 256                          # Aumentamos para mejor CPU y manejo de JSONs grandes
   timeout     = 60                           # Subimos de 30 a 60 segundos
   role        = aws_iam_role.worker_role.arn # <--- Referencia actualizada
+  # --- SOLUCIÓN AL BLOQUEO DE RECURSIVIDAD ---
+  # Permite que la Lambda se auto-invoque vía SQS más de 16 veces.
+  # Requiere AWS Provider v5.x
+  recursive_loop = "Allow"
+
   tracing_config {
     mode = "Active"
   }
+
   # INYECCIÓN DE DEPENDENCIAS:
   # Terraform pasa los nombres reales de los recursos a la Lambda
   environment {
