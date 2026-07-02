@@ -10,8 +10,8 @@ class YouTubeClient:
         self.headers = {"Authorization": f"Bearer {access_token}"}
 
     def _handle_response(self, response):
-        """Centraliza la detección de errores de cuota y tokens."""
-        if response.status_code == 200 or response.status_code == 201:
+        """Centraliza la detección de errores de cuota, tokens y duplicados."""
+        if response.status_code in [200, 201]:
             return response.json()
 
         error_data = response.json().get("error", {})
@@ -22,6 +22,10 @@ class YouTubeClient:
 
         if response.status_code == 401:
             raise InvalidTokenError("Token expirado o inválido")
+
+        # MANEJO DE DUPLICADOS (400): Si ya está suscrito, no es error real
+        if response.status_code == 400 and error_reason == "subscriptionDuplicate":
+            return {"status": "already_exists"}
 
         response.raise_for_status()
 
