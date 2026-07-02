@@ -139,13 +139,17 @@ def lambda_handler(event, context):
                     )
                     for chan in batch:
                         try:
-                            yt.subscribe_to_channel(chan["channelId"])
+                            result = yt.subscribe_to_channel(chan["channelId"])
                             success_count += 1
+                            if result.get("status") == "already_exists":
+                                logger.info(f"♻️ Ya vinculado: {chan.get('title')}")
+                            else:
+                                logger.info(f"✅ Nuevo vínculo: {chan.get('title')}")
                         except QuotaExceededError:
                             raise
                         except Exception as exc:
                             logger.warning(
-                                f"⚠️ Fallo al suscribir canal",
+                                f"⚠️ Fallo real en canal",
                                 extra={
                                     "job_id": job_id,
                                     "channel_title": chan.get("title"),
