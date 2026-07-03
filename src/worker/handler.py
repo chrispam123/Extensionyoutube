@@ -71,6 +71,8 @@ def lambda_handler(event, context):
             pending_playlists = job_item.get("pendingPlaylists")
             exp_playlist_id = job_item.get("currentPlaylistId")
             exp_playlist_title = job_item.get("currentPlaylistTitle")
+            # Token separado para playlistItems — evita que contamine el de canales
+            playlist_page_token = job_item.get("playlistPageToken")
 
             logger.info(
                 "🚀 Worker iniciando relevo",
@@ -275,8 +277,6 @@ def lambda_handler(event, context):
                                 break
 
                         pending_playlists = all_pl
-                        # Limpiamos el centinela de canales para que Drain empiece limpio
-                        next_page_token = None
                         logger.info(
                             f"📋 {len(all_pl)} playlists descubiertas",
                             extra={"job_id": job_id},
@@ -290,7 +290,7 @@ def lambda_handler(event, context):
                             first = pending_playlists[0]
                             exp_playlist_id = first["id"]
                             exp_playlist_title = first["title"]
-                            next_page_token = None
+                            playlist_page_token = None
                             logger.info(
                                 f"📜 Drenando playlist: {exp_playlist_title}",
                                 extra={"job_id": job_id},
@@ -299,7 +299,7 @@ def lambda_handler(event, context):
                         # Extraer videos
                         pl_items = yt.get_playlist_items(
                             exp_playlist_id,
-                            page_token=next_page_token,
+                            page_token=playlist_page_token,
                         )
 
                         # Encontrar o crear entrada en accumulated
@@ -328,7 +328,8 @@ def lambda_handler(event, context):
                             )
                             success_count += 1
 
-                        next_page_token = pl_items.get("nextPageToken")
+                        # Línea 329-331: playlist_page_token en vez de next_page_token
+                        playlist_page_token = pl_items.get("nextPageToken")
                         batch_size = len(pl_items.get("items", []))
                         logger.info(
                             f"🎬 {batch_size} videos añadidos a {exp_playlist_title}",
@@ -336,7 +337,7 @@ def lambda_handler(event, context):
                         )
 
                         # ¿Terminamos esta playlist?
-                        if next_page_token is None:
+                        if playlist_page_token is None:
                             pending_playlists = pending_playlists[1:]
                             exp_playlist_id = None
                             exp_playlist_title = None
@@ -379,6 +380,11 @@ def lambda_handler(event, context):
             if pending_playlists is not None:
                 update_expr += ", pendingPlaylists = :ppl"
                 expr_values[":ppl"] = pending_playlists
+            if playlist_page_token is not None:
+                update_expr += ", playlistPageToken = :ppt"
+                expr_values[":ppt"] = playlist_page_token
+            elif job_item.get("playlistPageToken") is not None:
+                update_expr += " REMOVE playlistPageToken"
             if exp_playlist_id:
                 update_expr += (
                     ", currentPlaylistId = :cpid, currentPlaylistTitle = :cpt"
