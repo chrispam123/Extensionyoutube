@@ -82,3 +82,27 @@ class YouTubeClient:
                 url, headers=self.headers, params={"part": "snippet"}, json=body
             )
             return self._handle_response(response)
+
+    def get_playlists(self, page_token=None):
+        """Obtiene la lista de playlists del usuario. Coste: 1 unidad."""
+        url = f"{self.base_url}/playlists"
+        params = {"part": "snippet", "mine": "true", "maxResults": 50}
+        if page_token:
+            params["pageToken"] = page_token
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url, headers=self.headers, params=params)
+            return self._handle_response(response)
+
+    def get_playlist_items(self, playlist_id: str, page_token=None, max_results=10):
+        """Obtiene los videos de una playlist. Coste: 1 unidad."""
+        url = f"{self.base_url}/playlistItems"
+        params = {
+            "part": "snippet",
+            "playlistId": playlist_id,
+            "maxResults": max_results,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url, headers=self.headers, params=params)
+            return self._handle_response(response)
