@@ -67,6 +67,10 @@ def lambda_handler(event, context):
             curr_vid_idx = int(job_item.get("currentVideoIndex", 0))
             active_pl_id = job_item.get("activePlaylistId")
             next_page_token = job_item.get("nextPageToken")
+            # Export de playlists: cola de trabajo y cursor actual
+            pending_playlists = job_item.get("pendingPlaylists")
+            exp_playlist_id = job_item.get("currentPlaylistId")
+            exp_playlist_title = job_item.get("currentPlaylistTitle")
 
             logger.info(
                 "🚀 Worker iniciando relevo",
@@ -250,11 +254,95 @@ def lambda_handler(event, context):
                         "playlists"
                     )
 
-                # FASE 2: PLAYLISTS (Placeholder para implementación real)
+                # FASE 2: EXPORTACIÓN DE PLAYLISTS
                 elif options.get("playlists"):
-                    logger.info(f"📤 Cosechando Playlists (Índice {curr_pl_idx})...")
-                    # Aquí iría la lógica de yt.get_playlists() de momento no deja importar las playlists
-                    has_more = False
+                    # === SUB-FASE A: DISCOVERY (Inventario de playlists) ===
+                    if pending_playlists is None:
+                        logger.info("🔍 Descubriendo playlists del usuario...")
+                        all_pl = []
+                        pl_page_token = None
+                        while True:
+                            pl_res = yt.get_playlists(page_token=pl_page_token)
+                            for pl in pl_res.get("items", []):
+                                all_pl.append(
+                                    {
+                                        "id": pl["id"],
+                                        "title": pl["snippet"]["title"],
+                                    }
+                                )
+                            pl_page_token = pl_res.get("nextPageToken")
+                            if not pl_page_token:
+                                break
+
+                        pending_playlists = all_pl
+                        logger.info(
+                            f"📋 {len(all_pl)} playlists descubiertas",
+                            extra={"job_id": job_id},
+                        )
+                        has_more = len(pending_playlists) > 0
+
+                    # === SUB-FASE B: DRAIN (Vaciado de videos por playlist) ===
+                    elif len(pending_playlists) > 0:
+                        # Si no hay playlist activa, tomamos la primera de la cola
+                        if exp_playlist_id is None:
+                            first = pending_playlists[0]
+                            exp_playlist_id = first["id"]
+                            exp_playlist_title = first["title"]
+                            next_page_token = None
+                            logger.info(
+                                f"📜 Drenando playlist: {exp_playlist_title}",
+                                extra={"job_id": job_id},
+                            )
+
+                        # Extraer videos
+                        pl_items = yt.get_playlist_items(
+                            exp_playlist_id,
+                            page_token=next_page_token,
+                        )
+
+                        # Encontrar o crear entrada en accumulated
+                        pl_entry = None
+                        for p in accumulated["playlists"]:
+                            if p["playlistId"] == exp_playlist_id:
+                                pl_entry = p
+                                break
+                        if pl_entry is None:
+                            pl_entry = {
+                                "playlistId": exp_playlist_id,
+                                "title": exp_playlist_title or "",
+                                "videos": [],
+                            }
+                            accumulated["playlists"].append(pl_entry)
+
+                        for item in pl_items.get("items", []):
+                            snippet = item.get("snippet", {})
+                            pl_entry["videos"].append(
+                                {
+                                    "videoId": snippet.get("resourceId", {}).get(
+                                        "videoId"
+                                    ),
+                                    "title": snippet.get("title"),
+                                }
+                            )
+                            success_count += 1
+
+                        next_page_token = pl_items.get("nextPageToken")
+                        batch_size = len(pl_items.get("items", []))
+                        logger.info(
+                            f"🎬 {batch_size} videos añadidos a {exp_playlist_title}",
+                            extra={"job_id": job_id},
+                        )
+
+                        # ¿Terminamos esta playlist?
+                        if next_page_token is None:
+                            pending_playlists = pending_playlists[1:]
+                            exp_playlist_id = None
+                            exp_playlist_title = None
+
+                        has_more = len(pending_playlists) > 0
+
+                    else:
+                        has_more = False
 
                 s3.put_object(
                     Bucket=bucket_name,
@@ -284,6 +372,20 @@ def lambda_handler(event, context):
                 expr_values[":api"] = active_pl_id
             elif job_item.get("activePlaylistId") is not None:
                 update_expr += " REMOVE activePlaylistId"
+
+            # Export de playlists: campos de estado
+            if pending_playlists is not None:
+                update_expr += ", pendingPlaylists = :ppl"
+                expr_values[":ppl"] = pending_playlists
+            if exp_playlist_id:
+                update_expr += (
+                    ", currentPlaylistId = :cpid, currentPlaylistTitle = :cpt"
+                )
+                expr_values[":cpid"] = exp_playlist_id
+                expr_values[":cpt"] = exp_playlist_title
+            else:
+                if job_item.get("currentPlaylistId") is not None:
+                    update_expr += " REMOVE currentPlaylistId, currentPlaylistTitle"
 
             # TTL para RUNNING: 6 días de vida mientras esté activo
             update_expr += ", expiresAt = :ttl"
