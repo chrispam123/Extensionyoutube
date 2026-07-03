@@ -275,6 +275,8 @@ def lambda_handler(event, context):
                                 break
 
                         pending_playlists = all_pl
+                        # Limpiamos el centinela de canales para que Drain empiece limpio
+                        next_page_token = None
                         logger.info(
                             f"📋 {len(all_pl)} playlists descubiertas",
                             extra={"job_id": job_id},
