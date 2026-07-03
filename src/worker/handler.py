@@ -360,7 +360,15 @@ def lambda_handler(event, context):
             now = datetime.datetime.now(datetime.UTC).isoformat()
 
             # Construcción dinámica de la expresión para evitar errores con None
-            update_expr = "SET #s = :run, nextPageToken = :next, updatedAt = :now, currentPlaylistIndex = :cpi, currentVideoIndex = :cvi"
+            # Orden correcto DynamoDB: SET (comas) → REMOVE (espacios) → ADD (espacios)
+            set_parts = [
+                "#s = :run",
+                "nextPageToken = :next",
+                "updatedAt = :now",
+                "currentPlaylistIndex = :cpi",
+                "currentVideoIndex = :cvi",
+            ]
+            remove_parts = []
             expr_attr_names = {"#s": "status"}
             expr_values = {
                 ":run": "RUNNING",
@@ -371,34 +379,38 @@ def lambda_handler(event, context):
             }
 
             if active_pl_id:
-                update_expr += ", activePlaylistId = :api"
+                set_parts.append("activePlaylistId = :api")
                 expr_values[":api"] = active_pl_id
             elif job_item.get("activePlaylistId") is not None:
-                update_expr += " REMOVE activePlaylistId"
+                remove_parts.append("activePlaylistId")
 
             # Export de playlists: campos de estado
             if pending_playlists is not None:
-                update_expr += ", pendingPlaylists = :ppl"
+                set_parts.append("pendingPlaylists = :ppl")
                 expr_values[":ppl"] = pending_playlists
             if playlist_page_token is not None:
-                update_expr += ", playlistPageToken = :ppt"
+                set_parts.append("playlistPageToken = :ppt")
                 expr_values[":ppt"] = playlist_page_token
             elif job_item.get("playlistPageToken") is not None:
-                update_expr += " REMOVE playlistPageToken"
+                remove_parts.append("playlistPageToken")
             if exp_playlist_id:
-                update_expr += (
-                    ", currentPlaylistId = :cpid, currentPlaylistTitle = :cpt"
-                )
+                set_parts.append("currentPlaylistId = :cpid")
+                set_parts.append("currentPlaylistTitle = :cpt")
                 expr_values[":cpid"] = exp_playlist_id
                 expr_values[":cpt"] = exp_playlist_title
             else:
                 if job_item.get("currentPlaylistId") is not None:
-                    update_expr += " REMOVE currentPlaylistId, currentPlaylistTitle"
+                    remove_parts.append("currentPlaylistId")
+                    remove_parts.append("currentPlaylistTitle")
 
             # TTL para RUNNING: 6 días de vida mientras esté activo
-            update_expr += ", expiresAt = :ttl"
+            set_parts.append("expiresAt = :ttl")
             expr_values[":ttl"] = int(time.time()) + (6 * 86400)
 
+            # Construir la expresión completa
+            update_expr = "SET " + ", ".join(set_parts)
+            if remove_parts:
+                update_expr += " REMOVE " + ", ".join(remove_parts)
             update_expr += " ADD doneCount :s, failedCount :f"
             expr_values[":s"] = success_count
             expr_values[":f"] = failed_count
