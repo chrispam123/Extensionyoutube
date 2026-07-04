@@ -189,7 +189,13 @@ def lambda_handler(event, context):
 
                     videos = current_pl.get("videos", [])
                     batch_vids = videos[curr_vid_idx : curr_vid_idx + 10]
-                    for vid_id in batch_vids:
+                    for vid_item in batch_vids:
+                        # Extraer el ID: puede ser string directo o dict {videoId, title}
+                        vid_id = (
+                            vid_item
+                            if isinstance(vid_item, str)
+                            else vid_item.get("videoId")
+                        )
                         try:
                             yt.add_video_to_playlist(active_pl_id, vid_id)
                             success_count += 1
