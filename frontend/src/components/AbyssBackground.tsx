@@ -61,24 +61,29 @@ const FRAGMENT_SHADER = /* glsl */ `
     uv.y += cos(uv.x * 2.5 + u_time * 0.15) * 0.02;
 
     // Escala base + desplazamiento lento (el "humo")
+    // Capas individuales de ruido
     float n1 = fbm(uv * 2.5 + u_time * 0.08);
     float n2 = fbm(uv * 4.0 - u_time * 0.05 + 1.0);
     float n3 = fbm(uv * 6.0 + u_time * 0.03 + 2.0);
 
-    // Mezcla de capas de ruido → niebla orgánica
-    float mist = n1 * 0.6 + n2 * 0.3 + n3 * 0.1;
+    // --- MAPEO ESPECTRAL: 3 colores por banda de frecuencia ---
+    // Baja frecuencia (n1): azul profundo — ondulaciones lentas
+    vec3 blueDeep = vec3(0.02, 0.05, 0.18);
+    float blueZone = smoothstep(0.2, 0.5, n1) * 0.4;
 
-    // Color base: gris visible con el humo
-    float mistVisibility = 0.5 + mist * 0.5;
-    vec3 baseColor = vec3(mistVisibility * 0.18);
+    // Media frecuencia (n2): rojo sangre — textura principal
+    vec3 blood = vec3(0.545, 0.0, 0.0);
+    float bloodZone = smoothstep(0.4, 0.7, n2) * u_blood_factor;
 
-    // Destellos blood (#8b0000) en zonas de alta distorsión — más presencia
-    float bloodZone = smoothstep(0.4, 0.7, mist);
-    bloodZone *= u_blood_factor;
-    vec3 bloodColor = vec3(0.545, 0.0, 0.0); // #8b0000 normalizado
+    // Alta frecuencia (n3): blanco — destellos finos
+    vec3 whiteSpark = vec3(0.6, 0.55, 0.5);
+    float whiteZone = smoothstep(0.55, 0.8, n3) * 0.3;
 
-    // Mezcla final con más presencia del blood
-    vec3 color = mix(baseColor, bloodColor, bloodZone * 0.55);
+    // Mezcla: base oscura + bandas de color
+    vec3 color = vec3(0.02); // negro base
+    color = mix(color, blueDeep, blueZone);
+    color = mix(color, blood, bloodZone * 0.6);
+    color = mix(color, whiteSpark, whiteZone);
 
     gl_FragColor = vec4(color, 1.0);
   }
