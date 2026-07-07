@@ -1,11 +1,11 @@
 .layout-root {
-    padding-left: var(--pad-left);
-    padding-right: var(--pad-right);
-    padding-top: 3rem;
+    padding-left: 1.5rem;
+    padding-right: 2rem;
+    padding-top: 2.5rem;
     padding-bottom: 2rem;
     display: flex;
     flex-direction: column;
-    min-height: 600px;
+    min-height: 100vh;
 }
 
 .layout-header {
@@ -30,7 +30,7 @@
 
 .layout-title {
     font-family: "Brotheric", serif;
-    font-size: 3.5rem; /* Impacto visual */
+    font-size: 2.8rem; /* Reducido para el panel lateral estrecho */
     font-weight: normal;
     font-style: italic;
     line-height: 0.9;
