@@ -72,8 +72,8 @@ const FRAGMENT_SHADER = /* glsl */ `
     float darkness = mix(0.15, 0.85, u_intensity) + mist * 0.3;
     darkness = clamp(darkness, 0.0, 1.0);
 
-    // Color base: negro/gris profundo
-    vec3 baseColor = vec3(darkness * 0.08);
+    // Color base: negro/gris profundo con más visibilidad
+    vec3 baseColor = vec3(darkness * 0.25);
 
     // Destellos blood (#8b0000) en zonas de alta distorsión
     float bloodZone = smoothstep(0.55, 0.75, mist);
