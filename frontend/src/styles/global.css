@@ -17,10 +17,10 @@
 
 @font-face {
     font-family: "BlackGothics";
-    src: url("../assets/fonts/BlackGothicsDemoRegular.ttf") format("truetype");
+    src: url("../assets/fonts/BlackGothicsDemoRegular.ttf");
     font-weight: normal;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
 }
 
 /* 2. RESET Y LIENZO (The Modern Nocturne) */
