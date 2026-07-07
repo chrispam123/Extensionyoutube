@@ -6,6 +6,13 @@ chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error("Error configurando SidePanel:", error));
 
+// 0.5 REDIRECCIÓN POST-INSTALACIÓN
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: "https://www.youtube.com" });
+  }
+});
+
 // 1. CONFIGURACIÓN (Inyectada por Vite/GitHub Actions)
 const API_URL = import.meta.env.VITE_API_URL;
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
