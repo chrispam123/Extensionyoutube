@@ -1,6 +1,11 @@
 // src/background.ts
 // Motor de fondo de Nocturne - Arquitectura de Persistencia y Resiliencia
 
+// 0. CONFIGURACIÓN DEL SIDE PANEL (Apertura al hacer clic en el icono)
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((error) => console.error("Error configurando SidePanel:", error));
+
 // 1. CONFIGURACIÓN (Inyectada por Vite/GitHub Actions)
 const API_URL = import.meta.env.VITE_API_URL;
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
