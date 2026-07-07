@@ -68,20 +68,17 @@ const FRAGMENT_SHADER = /* glsl */ `
     // Mezcla de capas de ruido → niebla orgánica
     float mist = n1 * 0.6 + n2 * 0.3 + n3 * 0.1;
 
-    // u_intensity controla la oscuridad general
-    float darkness = mix(0.15, 0.85, u_intensity) + mist * 0.3;
-    darkness = clamp(darkness, 0.0, 1.0);
+    // Color base: gris visible con el humo
+    float mistVisibility = 0.5 + mist * 0.5;
+    vec3 baseColor = vec3(mistVisibility * 0.18);
 
-    // Color base: negro/gris profundo con más visibilidad
-    vec3 baseColor = vec3(darkness * 0.25);
-
-    // Destellos blood (#8b0000) en zonas de alta distorsión
-    float bloodZone = smoothstep(0.55, 0.75, mist);
+    // Destellos blood (#8b0000) en zonas de alta distorsión — más presencia
+    float bloodZone = smoothstep(0.4, 0.7, mist);
     bloodZone *= u_blood_factor;
     vec3 bloodColor = vec3(0.545, 0.0, 0.0); // #8b0000 normalizado
 
-    // Mezcla final
-    vec3 color = mix(baseColor, bloodColor, bloodZone * 0.35);
+    // Mezcla final con más presencia del blood
+    vec3 color = mix(baseColor, bloodColor, bloodZone * 0.55);
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -176,7 +173,7 @@ export default function AbyssBackground() {
 
         gl!.uniform1f(uTime, elapsed);
         gl!.uniform1f(uIntensity, 0.65);
-        gl!.uniform1f(uBlood, 0.5);
+        gl!.uniform1f(uBlood, 0.7);
         gl!.uniform2f(uResolution, width, height);
 
         gl!.drawArrays(gl!.TRIANGLES, 0, 6);
