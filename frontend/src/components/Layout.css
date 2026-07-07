@@ -24,7 +24,7 @@
 }
 
 .header-subtitle {
-    font-family: "Space Grotesk", monospace; /* Technical feel */
+    font-family: "BlackGothics", "Space Grotesk", monospace;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.3em;
@@ -33,8 +33,8 @@
 }
 
 .layout-title {
-    font-family: "Brotheric", serif;
-    font-size: 2.8rem; /* Reducido para el panel lateral estrecho */
+    font-family: "BlackGothics", serif;
+    font-size: 2.8rem;
     font-weight: normal;
     font-style: italic;
     line-height: 0.9;

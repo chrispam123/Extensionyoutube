@@ -1,96 +1,140 @@
 .initiation-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
 }
 
 .hero-text {
-  font-family: 'Wukang', sans-serif;
-  font-size: 1.2rem;
-  line-height: 1.4;
-  font-style: italic;
-  color: rgba(255, 255, 255, 0.8);
-  max-width: 280px;
+    font-family: "BlackGothics", "Wukang", sans-serif;
+    font-size: 1.2rem;
+    line-height: 1.4;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.8);
+    max-width: 280px;
 }
 
 .security-badge {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 0;
-  border-top: 1px solid var(--color-ghost);
-  border-bottom: 1px solid var(--color-ghost);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--color-ghost);
+    border-bottom: 1px solid var(--color-ghost);
 }
 
 .security-text {
-  font-family: 'Space Grotesk', monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.15em;
-  opacity: 0.7;
+    font-family: "Space Grotesk", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    opacity: 0.7;
 }
 
 /* EL BOTÓN "ALTAR" */
 .btn-google-altar {
-  background-color: #ffffff;
-  color: #1a1c1c;
-  border: none;
-  padding: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  width: 100%;
+    background-color: #000000;
+    color: #ffffff;
+    border: none;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
 }
 
 .btn-google-altar:hover {
-  background-color: #353534;
-  color: #ffffff;
+    background-color: #1a1a1a;
+    color: #ffffff;
 }
 
 .google-icon {
-  font-weight: bold;
-  font-size: 1.2rem;
+    font-weight: bold;
+    font-size: 1.2rem;
 }
 
 .btn-text {
-  font-family: 'Space Grotesk', monospace;
-  font-weight: bold;
-  letter-spacing: 0.2em;
-  font-size: 0.9rem;
+    font-family: "Space Grotesk", monospace;
+    font-weight: bold;
+    letter-spacing: 0.2em;
+    font-size: 0.9rem;
 }
 
 /* FLECHA EN CSS PURO */
 .arrow-icon {
-  width: 20px;
-  height: 1px;
-  background-color: currentColor;
-  position: relative;
+    width: 20px;
+    height: 1px;
+    background-color: currentColor;
+    position: relative;
 }
 
 .arrow-icon::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: -4px;
-  width: 8px;
-  height: 8px;
-  border-top: 1px solid currentColor;
-  border-right: 1px solid currentColor;
-  transform: rotate(45deg);
+    content: "";
+    position: absolute;
+    right: 0;
+    top: -4px;
+    width: 8px;
+    height: 8px;
+    border-top: 1px solid currentColor;
+    border-right: 1px solid currentColor;
+    transform: rotate(45deg);
 }
 
 .initiation-footer {
-  margin-top: auto;
-  font-size: 0.6rem;
-  opacity: 0.5;
-  letter-spacing: 0.05em;
+    margin-top: auto;
+    font-size: 0.6rem;
+    opacity: 0.5;
+    letter-spacing: 0.05em;
 }
 
 .footer-links {
-  display: flex;
-  gap: 2rem;
-  margin-top: 1rem;
-  font-weight: bold;
-  text-decoration: underline;
+    display: flex;
+    gap: 2rem;
+    margin-top: 1rem;
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+/* CONTADORES */
+.display-count {
+    color: #ffffff;
+    font-family: "BlackGothics", "Wukang", sans-serif;
+}
+
+/* BOTÓN SECUNDARIO */
+.btn-logout {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    font-family: "BlackGothics", "Wukang", sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    transition: all 0.3s ease;
+}
+
+.btn-logout:hover {
+    background: #1a1a1a;
+}
+
+.btn-link {
+    background: none;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-family: "BlackGothics", "Wukang", sans-serif;
+    font-size: 0.8rem;
+    opacity: 0.7;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    opacity: 1;
+}
+
+/* INFO DE USUARIO */
+.user-info {
+    color: #ffffff;
+    font-family: "BlackGothics", "Wukang", sans-serif;
 }
