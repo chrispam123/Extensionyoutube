@@ -15,6 +15,14 @@
     font-display: swap;
 }
 
+@font-face {
+    font-family: "BlackGothics";
+    src: url("../assets/fonts/BlackGothicsDemoRegular.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* 2. RESET Y LIENZO (The Modern Nocturne) */
 * {
     margin: 0;
@@ -31,7 +39,7 @@ body {
        Con WebGL activo, el canvas (z-index: -1) se pinta encima. */
     background: transparent;
     color: #ffffff;
-    font-family: "Wukang", sans-serif;
+    font-family: "BlackGothics", "Wukang", sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
 }
