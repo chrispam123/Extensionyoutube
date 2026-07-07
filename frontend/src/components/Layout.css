@@ -6,13 +6,14 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    /* Capa semitransparente para legibilidad sobre el abismo */
-    background: rgba(10, 10, 10, 0.35);
+    /* Transparente: el canvas se ve detrás */
     position: relative;
 }
 
 .layout-header {
     margin-bottom: var(--gap-header-content);
+    background: rgba(10, 10, 10, 0.5);
+    padding: 0.5rem;
 }
 
 .header-top-line {
@@ -39,4 +40,11 @@
     line-height: 0.9;
     word-break: break-word;
     color: red;
+}
+
+.layout-main {
+    position: relative;
+    z-index: 0;
+    background: rgba(10, 10, 10, 0.3);
+    padding: 0.5rem;
 }
