@@ -16,8 +16,8 @@
 }
 
 @font-face {
-    font-family: "BlackGothics";
-    src: url("../assets/fonts/BlackGothicsDemoRegular.ttf");
+    font-family: "GodOfWar";
+    src: url("../assets/fonts/GODOFWAR.TTF");
     font-weight: normal;
     font-style: normal;
     font-display: block;
@@ -39,7 +39,7 @@ body {
        Con WebGL activo, el canvas (z-index: -1) se pinta encima. */
     background: transparent;
     color: #ffffff;
-    font-family: "BlackGothics", "Wukang", sans-serif;
+    font-family: "GodOfWar", "Wukang", sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
 }
