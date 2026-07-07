@@ -1,10 +1,11 @@
 /* src/components/AbyssBackground.css */
 
 .abyss-canvas {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     display: block;
+    z-index: 0;
 }

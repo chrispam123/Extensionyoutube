@@ -9,7 +9,6 @@
     /* Capa semitransparente para legibilidad sobre el abismo */
     background: rgba(10, 10, 10, 0.35);
     position: relative;
-    z-index: 1;
 }
 
 .layout-header {
