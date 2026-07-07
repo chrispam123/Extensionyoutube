@@ -27,7 +27,8 @@ body {
     width: 100%;
     min-width: 320px;
     min-height: 100vh;
-    /* Tenebrismo: Gradiente del centro a los bordes */
+    /* Fallback: gradiente estático si WebGL no está disponible.
+       El canvas del abismo (z-index: -1) lo cubre cuando funciona. */
     background: radial-gradient(circle at center, #131313 0%, #0e0e0e 100%);
     color: #ffffff;
     font-family: "Wukang", sans-serif;
