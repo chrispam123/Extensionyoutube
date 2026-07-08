@@ -114,7 +114,9 @@ function App() {
     return (
       <Layout title="THE NOCTURNE" subtitle="INITIATION">
         <div className="initiation-content">
-          <p className="hero-text">Surrender to the digital void.</p>
+          <p className="hero-text">
+            Exportación e Importación de tus gemas digitales
+          </p>
           <button
             className="btn-google-altar"
             onClick={login}

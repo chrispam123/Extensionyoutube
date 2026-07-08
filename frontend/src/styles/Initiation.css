@@ -11,6 +11,7 @@
     font-style: italic;
     color: rgba(255, 255, 255, 0.8);
     max-width: 280px;
+    text-align: center;
 }
 
 .security-badge {
@@ -58,6 +59,8 @@
     font-weight: bold;
     letter-spacing: 0.2em;
     font-size: 0.9rem;
+    text-align: center;
+    width: 100%;
 }
 
 /* FLECHA EN CSS PURO */
