@@ -52,6 +52,7 @@ jobs:
 
       - name: Build Lambda Artifacts
         run: |
+          pipx inject poetry poetry-plugin-export
           rm -rf dist/
           mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
           poetry export -f requirements.txt --output dist/requirements.txt
