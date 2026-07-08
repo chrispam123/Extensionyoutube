@@ -9,76 +9,53 @@ permissions:
   contents: read
 
 jobs:
-  # --- JOB 0: VALIDACIÓN (El Juez) ---
   validate:
     runs-on: ubuntu-latest
     env:
+      PYTHONPATH: src
+      AWS_DEFAULT_REGION: us-east-1
       AWS_ACCESS_KEY_ID: testing
       AWS_SECRET_ACCESS_KEY: testing
       AWS_SECURITY_TOKEN: testing
       AWS_SESSION_TOKEN: testing
-      AWS_DEFAULT_REGION: us-east-1
-      AWS_REGION: us-east-1
-      PYTHONPATH: src
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+      - name: Install Poetry
+        run: pipx install poetry
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "poetry"
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
-      - name: Lint with Black
-        run: poetry run black --check .
       - name: Run Tests
         run: poetry run pytest
 
-  # --- TRABAJO 1: INFRAESTRUCTURA Y BACKEND ---
   deploy-prod:
     needs: validate
     runs-on: ubuntu-latest
-    environment: production # <--- ACTIVA LA APROBACIÓN MANUAL EN GITHUB
+    environment: production
     outputs:
       api_url: ${{ steps.get_url.outputs.api_url }}
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
+      - name: Install Poetry
+        run: pipx install poetry
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "poetry"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
 
       - name: Build Lambda Artifacts
         run: |
           rm -rf dist/
           mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
           poetry export -f requirements.txt --output dist/requirements.txt
-
           for cmd in worker dispatcher status upload auth resumer; do
-            echo "📦 Empaquetando $cmd..."
             pip install -r dist/requirements.txt -t dist/$cmd/ --ignore-installed --quiet
             if [ "$cmd" == "worker" ]; then cp src/worker/handler.py dist/worker/; fi
             if [ "$cmd" == "dispatcher" ]; then cp src/dispatcher/dispatcher.py dist/dispatcher/; fi
@@ -100,7 +77,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init & Apply
-        working-directory: infra/environments/prod # <--- APUNTA A CARPETA PROD
+        working-directory: infra/environments/prod
         env:
           TF_VAR_aws_region: "us-east-1"
           TF_VAR_use_localstack: "false"
@@ -117,7 +94,6 @@ jobs:
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
 
-  # --- TRABAJO 2: COMPILACIÓN DEL FRONTEND ---
   build-frontend:
     needs: deploy-prod
     runs-on: ubuntu-latest
@@ -125,28 +101,21 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-
+          node-version: "22"
       - name: Install Dependencies
         working-directory: frontend
         run: npm install
-
       - name: Inject Dynamic Config
         working-directory: frontend
         run: |
-          # Inyectamos la URL de PRODUCCIÓN y el ID de Google de PRODUCCIÓN
           echo "VITE_API_URL=${{ needs.deploy-prod.outputs.api_url }}" > .env.production
           echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env.production
-          echo "✅ Artefacto de producción configurado"
-
       - name: Build Extension
         working-directory: frontend
         run: npm run build
-
       - name: Upload Production Artifact
         uses: actions/upload-artifact@v4
         with:

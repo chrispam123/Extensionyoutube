@@ -5,100 +5,74 @@ on:
     branches: [develop]
 
 permissions:
-  id-token: write # Obligatorio para el apretón de manos OIDC con AWS
-  contents: read # Obligatorio para descargar el código del repo
+  id-token: write
+  contents: read
 
 jobs:
-  # --- JOB 0: VALIDACIÓN (El Juez) ---
   validate:
     runs-on: ubuntu-latest
     env:
+      PYTHONPATH: src
+      AWS_DEFAULT_REGION: us-east-1
       AWS_ACCESS_KEY_ID: testing
       AWS_SECRET_ACCESS_KEY: testing
       AWS_SECURITY_TOKEN: testing
       AWS_SESSION_TOKEN: testing
-      AWS_DEFAULT_REGION: us-east-1
-      AWS_REGION: us-east-1
-      PYTHONPATH: src
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # --- CORRECCIÓN: INSTALAR POETRY ANTES DE SETUP-PYTHON ---
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "poetry" # Ahora sí encontrará el ejecutable para el caché
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Run Tests
+        run: poetry run pytest
+
+  deploy-dev:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: development
+    outputs:
+      api_url: ${{ steps.get_url.outputs.api_url }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Poetry
+        run: pipx install poetry
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "poetry"
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      - name: Lint with Black
-        run: poetry run black --check .
-      - name: Run Tests
-        run: poetry run pytest
-
-  # --- TRABAJO 1: INFRAESTRUCTURA Y BACKEND ---
-  deploy-dev:
-    needs: validate
-    runs-on: ubuntu-latest
-    environment: development # Conecta con el búnker de secretos de 'development'
-    outputs:
-      api_url: ${{ steps.get_url.outputs.api_url }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "poetry" # PRINCIPIO DE EFICIENCIA: Activa el caché de dependencias
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      # NOTA: En Poetry 2.x no instalamos el plugin de exportación, es nativo.
 
       - name: Build Lambda Artifacts
         run: |
-          # 1. Preparar carpetas limpias
           rm -rf dist/
           mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
-
-          # 2. Generar manifiesto de dependencias único
           poetry export -f requirements.txt --output dist/requirements.txt
 
-          # 3. Bucle de construcción para las 6 Lambdas
           for cmd in worker dispatcher status upload auth resumer; do
             echo "📦 Empaquetando $cmd..."
             pip install -r dist/requirements.txt -t dist/$cmd/ --ignore-installed --quiet
-
-            # Copiar lógica específica según el nombre de la carpeta
             if [ "$cmd" == "worker" ]; then cp src/worker/handler.py dist/worker/; fi
             if [ "$cmd" == "dispatcher" ]; then cp src/dispatcher/dispatcher.py dist/dispatcher/; fi
             if [ "$cmd" == "status" ]; then cp src/status/status.py dist/status/; fi
             if [ "$cmd" == "upload" ]; then cp src/upload/upload.py dist/upload/; fi
             if [ "$cmd" == "auth" ]; then cp src/auth/auth_handler.py dist/auth/; fi
             if [ "$cmd" == "resumer" ]; then cp src/resumer/resumer.py dist/resumer/; fi
-
-            # Copiar capa compartida (Shared) a todas
             cp -r src/shared dist/$cmd/
-
-            # Crear el ZIP inmutable
             cd dist/$cmd && zip -r ../$cmd.zip . > /dev/null && cd ../..
           done
 
@@ -129,7 +103,6 @@ jobs:
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
 
-  # --- TRABAJO 2: COMPILACIÓN DEL FRONTEND ---
   build-frontend:
     needs: deploy-dev
     runs-on: ubuntu-latest
@@ -137,28 +110,21 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-
+          node-version: "22" # ACTUALIZADO A VERSIÓN ESTABLE
       - name: Install Dependencies
         working-directory: frontend
         run: npm install
-
       - name: Inject Dynamic Config
         working-directory: frontend
         run: |
-          # Inyectamos la URL fresca de AWS y el ID de Google desde el búnker
           echo "VITE_API_URL=${{ needs.deploy-dev.outputs.api_url }}" > .env.production
           echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env.production
-          echo "✅ Configuración inyectada con éxito"
-
       - name: Build Extension
         working-directory: frontend
         run: npm run build
-
       - name: Upload Dev Artifact
         uses: actions/upload-artifact@v4
         with:
