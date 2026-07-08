@@ -1,55 +1,33 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
-# Project: Nocturne Backend
-# Purpose: Sync real Google secrets to AWS Cloud (Develop Environment)
+# Usage: ./sync_secrets_aws.sh [develop|prod]
 
-# 1. Cargar variables del .env
-# Usamos export para que las variables estén disponibles para los comandos aws
-export $(grep -v '^#' .env | xargs)
-# --- EL ESCUDO: LIMPIEZA DE ENTORNO ---
-# Borramos la variable del endpoint para que el CLI use los oficiales de AWS
-unset AWS_ENDPOINT_URL
-unset AWS_ACCESS_KEY_ID
-unset AWS_SECRET_ACCESS_KEY
-unset AWS_SESSION_TOKEN
+ENV=$1
 
-echo "🌐 Conectando con AWS Cloud (Real)..."
-
-# 2. Verificación de Identidad (Seguridad ante todo)
-# Antes de subir nada, confirmamos en qué cuenta estamos para no equivocarnos
-ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-if [ $? -ne 0 ]; then
-    echo "❌ ERROR: No se pudo conectar con AWS Real. Revisa tus credenciales."
+if [[ ! "$ENV" =~ ^(develop|prod)$ ]]; then
+    echo "❌ ERROR: Debes especificar el entorno: develop o prod"
+    echo "Ejemplo: ./sync_secrets_aws.sh develop"
     exit 1
 fi
-echo "🎯 Operando en la cuenta AWS: $ACCOUNT_ID"
 
-# 3. Inyectar Client ID
-# Lo subimos como SecureString usando el alias de la llave que creó Terraform
-echo "🔑 Subiendo Client ID..."
-aws ssm put-parameter \
-    --name "/extension/google/client_id" \
-    --value "$GOOGLE_CLIENT_ID" \
-    --type "SecureString" \
-    --key-id "alias/extension/token-key-develop" \
-    --overwrite
+# 1. Cargar variables del .env
+export $(grep -v '^#' .env | xargs)
+unset AWS_ENDPOINT_URL AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 
-# 4. Inyectar Client Secret
-echo "🔑 Subiendo Client Secret..."
-aws ssm put-parameter \
-    --name "/extension/google/client_secret" \
-    --value "$GOOGLE_CLIENT_SECRET" \
-    --type "SecureString" \
-    --key-id "alias/extension/token-key-develop" \
-    --overwrite
+echo "🌐 Conectando con AWS Cloud - Entorno: $ENV"
 
-# 5. Inyectar JWT Secret para la firma de pasaportes Nocturne
-echo "🔑 Subiendo JWT Secret..."
-aws ssm put-parameter \
-    --name "/extension/auth/jwt_secret" \
-    --value "$JWT_SECRET" \
-    --type "SecureString" \
-    --key-id "alias/extension/token-key-develop" \
-    --overwrite
+# 2. Verificación de Identidad
+ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+echo "🎯 Cuenta AWS: $ACCOUNT_ID"
 
-echo "✅ Todos los secretos (Google + JWT) sincronizados en AWS Cloud."
+# 3. Inyectar Secretos con Ruta Dinámica
+# Usamos el alias de la llave correspondiente al entorno
+KMS_KEY="alias/extension/token-key-$ENV"
+
+echo "🔑 Subiendo secretos a /extension/$ENV/..."
+
+aws ssm put-parameter --name "/extension/$ENV/google/client_id" --value "$GOOGLE_CLIENT_ID" --type "SecureString" --key-id "$KMS_KEY" --overwrite
+aws ssm put-parameter --name "/extension/$ENV/google/client_secret" --value "$GOOGLE_CLIENT_SECRET" --type "SecureString" --key-id "$KMS_KEY" --overwrite
+aws ssm put-parameter --name "/extension/$ENV/auth/jwt_secret" --value "$JWT_SECRET" --type "SecureString" --key-id "$KMS_KEY" --overwrite
+
+echo "✅ Sincronización completada para $ENV."

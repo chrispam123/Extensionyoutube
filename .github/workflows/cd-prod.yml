@@ -1,12 +1,12 @@
-name: CD Deployment (Dev)
+name: CD Deployment (Production)
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
 
 permissions:
-  id-token: write # Obligatorio para el apretón de manos OIDC con AWS
-  contents: read # Obligatorio para descargar el código del repo
+  id-token: write
+  contents: read
 
 jobs:
   # --- JOB 0: VALIDACIÓN (El Juez) ---
@@ -48,10 +48,10 @@ jobs:
         run: poetry run pytest
 
   # --- TRABAJO 1: INFRAESTRUCTURA Y BACKEND ---
-  deploy-dev:
+  deploy-prod:
     needs: validate
     runs-on: ubuntu-latest
-    environment: development # Conecta con el búnker de secretos de 'development'
+    environment: production # <--- ACTIVA LA APROBACIÓN MANUAL EN GITHUB
     outputs:
       api_url: ${{ steps.get_url.outputs.api_url }}
 
@@ -63,7 +63,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "poetry" # PRINCIPIO DE EFICIENCIA: Activa el caché de dependencias
+          cache: "poetry"
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -71,34 +71,22 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      # NOTA: En Poetry 2.x no instalamos el plugin de exportación, es nativo.
-
       - name: Build Lambda Artifacts
         run: |
-          # 1. Preparar carpetas limpias
           rm -rf dist/
           mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
-
-          # 2. Generar manifiesto de dependencias único
           poetry export -f requirements.txt --output dist/requirements.txt
 
-          # 3. Bucle de construcción para las 6 Lambdas
           for cmd in worker dispatcher status upload auth resumer; do
             echo "📦 Empaquetando $cmd..."
             pip install -r dist/requirements.txt -t dist/$cmd/ --ignore-installed --quiet
-
-            # Copiar lógica específica según el nombre de la carpeta
             if [ "$cmd" == "worker" ]; then cp src/worker/handler.py dist/worker/; fi
             if [ "$cmd" == "dispatcher" ]; then cp src/dispatcher/dispatcher.py dist/dispatcher/; fi
             if [ "$cmd" == "status" ]; then cp src/status/status.py dist/status/; fi
             if [ "$cmd" == "upload" ]; then cp src/upload/upload.py dist/upload/; fi
             if [ "$cmd" == "auth" ]; then cp src/auth/auth_handler.py dist/auth/; fi
             if [ "$cmd" == "resumer" ]; then cp src/resumer/resumer.py dist/resumer/; fi
-
-            # Copiar capa compartida (Shared) a todas
             cp -r src/shared dist/$cmd/
-
-            # Crear el ZIP inmutable
             cd dist/$cmd && zip -r ../$cmd.zip . > /dev/null && cd ../..
           done
 
@@ -112,11 +100,11 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init & Apply
-        working-directory: infra/environments/dev
+        working-directory: infra/environments/prod # <--- APUNTA A CARPETA PROD
         env:
           TF_VAR_aws_region: "us-east-1"
           TF_VAR_use_localstack: "false"
-          TF_VAR_environment: "develop"
+          TF_VAR_environment: "prod"
           TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp"
         run: |
           terraform init
@@ -124,16 +112,16 @@ jobs:
 
       - name: Get API URL from Terraform
         id: get_url
-        working-directory: infra/environments/dev
+        working-directory: infra/environments/prod
         run: |
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
 
   # --- TRABAJO 2: COMPILACIÓN DEL FRONTEND ---
   build-frontend:
-    needs: deploy-dev
+    needs: deploy-prod
     runs-on: ubuntu-latest
-    environment: development
+    environment: production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -150,17 +138,17 @@ jobs:
       - name: Inject Dynamic Config
         working-directory: frontend
         run: |
-          # Inyectamos la URL fresca de AWS y el ID de Google desde el búnker
-          echo "VITE_API_URL=${{ needs.deploy-dev.outputs.api_url }}" > .env.production
+          # Inyectamos la URL de PRODUCCIÓN y el ID de Google de PRODUCCIÓN
+          echo "VITE_API_URL=${{ needs.deploy-prod.outputs.api_url }}" > .env.production
           echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env.production
-          echo "✅ Configuración inyectada con éxito"
+          echo "✅ Artefacto de producción configurado"
 
       - name: Build Extension
         working-directory: frontend
         run: npm run build
 
-      - name: Upload Dev Artifact
+      - name: Upload Production Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nocturne-extension-dev
+          name: nocturne-extension-prod
           path: frontend/dist/
