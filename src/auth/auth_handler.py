@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
+import base64
+import datetime
 import json
 import os
+
 import boto3
 import httpx
-import datetime
-import base64
 from aws_lambda_powertools import Logger, Tracer
-from shared.responses import cors_response, get_cors_headers
+
 from shared.auth import create_nocturne_jwt
+from shared.responses import cors_response, get_cors_headers
 
 logger = Logger()
 tracer = Tracer()
@@ -37,14 +39,16 @@ def lambda_handler(event, context):
 
         # 1. Recuperar Secretos
         logger.info("🔍 Consultando secretos en SSM...")
-        client_id = ssm.get_parameter(Name="/extension/google/client_id")["Parameter"][
+        env = os.getenv("ENVIRONMENT", "")
+        prefix = f"/extension/{env}" if env else "/extension"
+        client_id = ssm.get_parameter(Name=f"{prefix}/google/client_id")["Parameter"][
             "Value"
         ]
         client_secret = ssm.get_parameter(
-            Name="/extension/google/client_secret", WithDecryption=True
+            Name=f"{prefix}/google/client_secret", WithDecryption=True
         )["Parameter"]["Value"]
         jwt_secret = ssm.get_parameter(
-            Name="/extension/auth/jwt_secret", WithDecryption=True
+            Name=f"{prefix}/auth/jwt_secret", WithDecryption=True
         )["Parameter"]["Value"]
 
         # 2. Intercambio de Tokens

@@ -257,6 +257,7 @@ resource "aws_lambda_function" "worker_lambda" {
       DYNAMODB_TABLE   = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS    = aws_kms_alias.token_key_alias.name # <--- INYECCIÓN
       SQS_QUEUE_URL    = aws_sqs_queue.jobs_queue.url       # <--- NUEVA VARIABLEs
+      ENVIRONMENT      = var.environment
     }
   }
 }
@@ -595,7 +596,8 @@ resource "aws_lambda_function" "status_lambda" {
       EXTENSION_ID         = var.extension_id
       POWERTOOLS_LOG_LEVEL = "INFO"
       # --- ESTA ES LA LÍNEA QUE FALTA ---
-      S3_BUCKET = aws_s3_bucket.uploads_bucket.id
+      S3_BUCKET   = aws_s3_bucket.uploads_bucket.id
+      ENVIRONMENT = var.environment
 
     }
   }
@@ -748,6 +750,7 @@ resource "aws_lambda_function" "upload_lambda" {
       SQS_QUEUE_URL  = aws_sqs_queue.jobs_queue.url # <--- NUEVA VARIABLE en la exportacion el mensaje
       # AQUÍ CONECTAMOS EL PUENTE:
       EXTENSION_ID = var.extension_id
+      ENVIRONMENT  = var.environment
     }
   }
 }
@@ -855,6 +858,7 @@ resource "aws_lambda_function" "auth_lambda" {
       DYNAMODB_TABLE = aws_dynamodb_table.jobs_table.name
       KMS_KEY_ALIAS  = aws_kms_alias.token_key_alias.name
       EXTENSION_ID   = var.extension_id
+      ENVIRONMENT    = var.environment
       # ESTO ACTIVA LOS LOGS DE POWERTOOLS
       POWERTOOLS_LOG_LEVEL = "INFO"
     }

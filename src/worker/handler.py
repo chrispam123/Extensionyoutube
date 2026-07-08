@@ -29,12 +29,14 @@ cached_secrets = {"client_id": None, "client_secret": None}
 
 
 def get_google_secrets():
+    env = os.getenv("ENVIRONMENT", "")
+    prefix = f"/extension/{env}" if env else "/extension"
     if not cached_secrets["client_id"] or not cached_secrets["client_secret"]:
         cached_secrets["client_id"] = ssm.get_parameter(
-            Name="/extension/google/client_id", WithDecryption=True
+            Name=f"{prefix}/google/client_id", WithDecryption=True
         )["Parameter"]["Value"]
         cached_secrets["client_secret"] = ssm.get_parameter(
-            Name="/extension/google/client_secret", WithDecryption=True
+            Name=f"{prefix}/google/client_secret", WithDecryption=True
         )["Parameter"]["Value"]
     return cached_secrets["client_id"], cached_secrets["client_secret"]
 

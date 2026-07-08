@@ -37,8 +37,10 @@ def lambda_handler(event, context):
         # 1. VALIDACIÓN DE IDENTIDAD
         auth_header = event.get("headers", {}).get("authorization", "")
         token = auth_header.split(" ")[1] if " " in auth_header else ""
+        env = os.getenv("ENVIRONMENT", "")
+        prefix = f"/extension/{env}" if env else "/extension"
         jwt_secret = ssm.get_parameter(
-            Name="/extension/auth/jwt_secret", WithDecryption=True
+            Name=f"{prefix}/auth/jwt_secret", WithDecryption=True
         )["Parameter"]["Value"]
         decoded = decode_nocturne_jwt(token, jwt_secret)
         user_id = decoded["sub"]
