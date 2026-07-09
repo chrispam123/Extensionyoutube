@@ -3,9 +3,20 @@
   "name": "Nocturne YouTube Extension",
   "version": "1.0.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0mGvP3e41Df8S8JjTunHJT73qaWAMhCsjrfEDi1dYyirA6XsclfZ3dnwCRwNeJNMKyXwTHrjAN6yV3unZMvVHTPazXmlLIkb4xta5F68P4Q8g1pb5ICqLaYTtyB7oFfy7BD+UT3TdjYX40AhGIIoloxHbxSHm1aoFvROkGODvyekAzZw7ISmV2oNgLNYf5qv5IIAx1UOS7FoAr0nfXl1Mq/ryRoWGwlERwa/tMetpVPmdB+gI//o9FDzUa3bNca0tYFfxK1PKtmKVgF+oUO2xVXKLhDjmhRiYNQUFOdidFb4OVK7eePSIiOreR18NlX9BBS305ghT4VWc0sE3WKowQIDAQAB",
+  "icons": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
   "action": {
-    "default_title": "Nocturne"
+    "default_title": "Nocturne",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
   },
+
   "side_panel": {
     "default_path": "index.html"
   },
