@@ -20,15 +20,15 @@ override.tf
 override.tf.json
 _override.tf
 _override.tf.json
-.terraform.lock.hcl
 
 # --- DOCKER & LOCALSTACK ---
 docker/localstack/volume/
 .localstack/
+enviroments/
 
 # --- SECRETOS & CONFIG (CRÍTICO) ---
 .env
-.env.*
+
 *.pem
 *.key
 secrets.json
@@ -38,3 +38,22 @@ secrets.json
 .idea/
 *.swp
 .DS_Store (si usas Mac)
+#excepciones
+CHEATSHEET.md
+job-real-001.json
+docker/localstack/response.json
+response.json
+
+
+
+# --- NODE.js / REACT (FRONTEND) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*

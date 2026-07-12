@@ -1,0 +1,133 @@
+name: CD Deployment (Dev)
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+      AWS_SECURITY_TOKEN: testing
+      AWS_SESSION_TOKEN: testing
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- CORRECCIÓN: INSTALAR POETRY ANTES DE SETUP-PYTHON ---
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "poetry" # Ahora sí encontrará el ejecutable para el caché
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Run Tests
+        run: poetry run pytest
+
+  deploy-dev:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: development
+    outputs:
+      api_url: ${{ steps.get_url.outputs.api_url }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "poetry"
+
+      - name: Build Lambda Artifacts
+        run: |
+          pipx inject poetry poetry-plugin-export
+          rm -rf dist/
+          mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
+          poetry export -f requirements.txt --output dist/requirements.txt
+
+          for cmd in worker dispatcher status upload auth resumer; do
+            echo "📦 Empaquetando $cmd..."
+            pip install -r dist/requirements.txt -t dist/$cmd/ --ignore-installed --quiet
+            if [ "$cmd" == "worker" ]; then cp src/worker/handler.py dist/worker/; fi
+            if [ "$cmd" == "dispatcher" ]; then cp src/dispatcher/dispatcher.py dist/dispatcher/; fi
+            if [ "$cmd" == "status" ]; then cp src/status/status.py dist/status/; fi
+            if [ "$cmd" == "upload" ]; then cp src/upload/upload.py dist/upload/; fi
+            if [ "$cmd" == "auth" ]; then cp src/auth/auth_handler.py dist/auth/; fi
+            if [ "$cmd" == "resumer" ]; then cp src/resumer/resumer.py dist/resumer/; fi
+            cp -r src/shared dist/$cmd/
+            cd dist/$cmd && zip -r ../$cmd.zip . > /dev/null && cd ../..
+          done
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply
+        working-directory: infra/environments/dev
+        env:
+          TF_VAR_aws_region: "us-east-1"
+          TF_VAR_use_localstack: "false"
+          TF_VAR_environment: "develop"
+          TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp"
+        run: |
+          terraform init
+          terraform apply -auto-approve -input=false
+
+      - name: Get API URL from Terraform
+        id: get_url
+        working-directory: infra/environments/dev
+        run: |
+          URL=$(terraform output -raw api_url)
+          echo "api_url=$URL" >> $GITHUB_OUTPUT
+
+  build-frontend:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22" # ACTUALIZADO A VERSIÓN ESTABLE
+      - name: Install Dependencies
+        working-directory: frontend
+        run: npm install
+      - name: Inject Dynamic Config
+        working-directory: frontend
+        run: |
+          echo "VITE_API_URL=${{ needs.deploy-dev.outputs.api_url }}" > .env.production
+          echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env.production
+      - name: Build Extension
+        working-directory: frontend
+        run: npm run build
+      - name: Upload Dev Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-extension-dev
+          path: frontend/dist/

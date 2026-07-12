@@ -1,0 +1,88 @@
+/* 1. REGISTRO DE FUENTES (Formato OTF) */
+@font-face {
+    font-family: "Brotheric";
+    src: url("../assets/fonts/Holitter_Gothic.ttf") format("TrueType Font");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Wukang";
+    src: url("../assets/fonts/Wukang.otf") format("opentype");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "GodOfWar";
+    src: url("../assets/fonts/GODOFWAR.TTF");
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
+}
+
+/* 2. RESET Y LIENZO (The Modern Nocturne) */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    border-radius: 0 !important;
+}
+
+body {
+    width: 100%;
+    min-width: 320px;
+    min-height: 100vh;
+    /* Fallback: gradiente estático si WebGL no está disponible.
+       Con WebGL activo, el canvas (z-index: -1) se pinta encima. */
+    background: transparent;
+    color: #ffffff;
+    font-family: "GodOfWar", "Wukang", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+:root {
+    /* Spacing Tokens */
+    --pad-left: 2.75rem;
+    --pad-right: 3.5rem;
+    --gap-header-content: 2.75rem; /* spacing-12 del DESIGN.md */
+
+    /* Colors */
+    --color-primary: #ffffff;
+    --color-ghost: rgba(71, 71, 71, 0.15);
+}
+
+/* Estilo de la Cruz (+) en CSS Puro */
+.cross-motif {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    position: relative;
+}
+
+.cross-motif::before,
+.cross-motif::after {
+    content: "";
+    position: absolute;
+    background-color: var(--color-primary);
+}
+
+/* Línea Horizontal */
+.cross-motif::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    transform: translateY(-50%);
+}
+
+/* Línea Vertical */
+.cross-motif::after {
+    left: 50%;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    transform: translateX(-50%);
+}

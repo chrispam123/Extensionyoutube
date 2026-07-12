@@ -11,6 +11,8 @@ boto3 = "1.35.0"
 aws-lambda-powertools = "3.4.1"
 python-dotenv = "1.0.1"
 aws-xray-sdk = "^2.15.0"
+httpx = "^0.28.1"
+pyjwt = "^2.13.0"
 
 [tool.poetry.group.dev.dependencies]
 awscli-local = "0.22.0"
@@ -23,5 +25,5 @@ black = "^26.5.1"
 requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = [".", "src"] # <--- Añadimos "src" aquí
 testpaths = ["tests"]
