@@ -26,7 +26,7 @@ KMS_KEY="alias/extension/token-key-$ENV"
 
 echo "🔑 Subiendo secretos a /extension/$ENV/..."
 
-aws ssm put-parameter --name "/extension/$ENV/google/client_id" --value "$GOOGLE_CLIENT_ID" --type "SecureString" --key-id "$KMS_KEY" --overwrite
+aws ssm put-parameter --name "/extension/$ENV/google/client_id" --value "$GOOGLE_CLIENT_ID" --type "String" --overwrite
 aws ssm put-parameter --name "/extension/$ENV/google/client_secret" --value "$GOOGLE_CLIENT_SECRET" --type "SecureString" --key-id "$KMS_KEY" --overwrite
 aws ssm put-parameter --name "/extension/$ENV/auth/jwt_secret" --value "$JWT_SECRET" --type "SecureString" --key-id "$KMS_KEY" --overwrite
 
