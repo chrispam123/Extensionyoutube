@@ -820,8 +820,8 @@ resource "aws_iam_role_policy" "auth_permissions" {
         ]
       },
       {
-        Sid      = "AllowKMSEncrypt"
-        Action   = ["kms:Encrypt"] # <--- SOLO CIFRAR, NO DESCIFRAR cifra JWT que esta guardado en SSM
+        Sid      = "AllowKMSEncryptDecrypt"
+        Action   = ["kms:Encrypt", "kms:Decrypt"]
         Effect   = "Allow"
         Resource = aws_kms_key.token_key.arn
       },

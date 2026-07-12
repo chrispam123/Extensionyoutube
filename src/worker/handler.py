@@ -33,7 +33,7 @@ def get_google_secrets():
     prefix = f"/extension/{env}" if env else "/extension"
     if not cached_secrets["client_id"] or not cached_secrets["client_secret"]:
         cached_secrets["client_id"] = ssm.get_parameter(
-            Name=f"{prefix}/google/client_id", WithDecryption=True
+            Name=f"{prefix}/google/client_id"
         )["Parameter"]["Value"]
         cached_secrets["client_secret"] = ssm.get_parameter(
             Name=f"{prefix}/google/client_secret", WithDecryption=True
