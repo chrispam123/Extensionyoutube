@@ -571,6 +571,13 @@ resource "aws_iam_role_policy" "status_permissions" {
         Action   = ["ssm:GetParameter"]
         Effect   = "Allow"
         Resource = aws_ssm_parameter.jwt_secret.arn
+      },
+
+      {
+        Sid      = "AllowKMSDecrypt"
+        Action   = ["kms:Decrypt"]
+        Effect   = "Allow"
+        Resource = aws_kms_key.token_key.arn
       }
     ]
   })
@@ -713,8 +720,14 @@ resource "aws_iam_role_policy" "upload_permissions" {
         Sid    = "AllowSSMReadJWTSecret"
         Action = ["ssm:GetParameter"]
         Effect = "Allow"
-        # Le damos acceso específico al secreto del JWT
         Resource = aws_ssm_parameter.jwt_secret.arn
+      },
+
+      {
+        Sid      = "AllowKMSDecrypt"
+        Action   = ["kms:Decrypt"]
+        Effect   = "Allow"
+        Resource = aws_kms_key.token_key.arn
       },
 
       # --- NUEVO: PERMISO PARA INICIAR EXPORTACIONES ---ENVIAR A SQS en EXPORTACION
