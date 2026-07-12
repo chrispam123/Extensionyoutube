@@ -95,6 +95,8 @@ resource "aws_sqs_queue" "jobs_dlq" {
 resource "aws_sqs_queue" "jobs_queue" {
   name = "extension-sqs-work-${var.environment}"
 
+  visibility_timeout_seconds = 60  # Debe ser >= timeout de la Lambda worker
+
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.jobs_dlq.arn
     maxReceiveCount     = 3
