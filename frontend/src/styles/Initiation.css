@@ -141,3 +141,25 @@
     color: #ffffff;
     font-family: "GodOfWar", "Wukang", sans-serif;
 }
+
+/* HOURGLASS ANIMADO */
+.hourglass-loader {
+    width: 48px;
+    height: 48px;
+    margin: 1rem auto;
+    display: block;
+    opacity: 0.8;
+    animation: pulse-hourglass 2s ease-in-out infinite;
+    filter: invert(1); /* SVG negro → blanco sobre fondo oscuro */
+}
+
+@keyframes pulse-hourglass {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50%      { opacity: 1.0; transform: scale(1.1); }
+}
+
+/* CRUZ INVERTIDA (botón descarga) */
+.cross-inverted {
+    transform: rotate(180deg);
+    margin-right: 0.75rem;
+}
