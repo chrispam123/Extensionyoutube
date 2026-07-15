@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="24" height="24">
+  <!-- ==== ESTRUCTURA DEL RELOJ (marco negro) ==== -->
+  <!-- Tapa superior -->
+  <rect x="9" y="4" width="46" height="6" rx="3" fill="#1a1a1a"/>
+  <!-- Tapa inferior -->
+  <rect x="9" y="54" width="46" height="6" rx="3" fill="#1a1a1a"/>
+
+  <!-- Contorno del cristal (forma de reloj de arena) -->
+  <path d="M14,11
+           L50,11
+           L34,31
+           L34,33
+           L50,53
+           L14,53
+           L30,33
+           L30,31
+           Z"
+        fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- ==== LÍQUIDO SUPERIOR (rojo, se vacía) ==== -->
+  <polygon fill="#b5121f">
+    <animate attributeName="points"
+             dur="1.6s"
+             repeatCount="indefinite"
+             values="
+               16,13 48,13 32,31 32,32 ;
+               16,26 48,26 32,31 32,32 ;
+               16,13 48,13 32,31 32,32
+             "/>
+  </polygon>
+
+  <!-- ==== LÍQUIDO INFERIOR (rojo, se llena) ==== -->
+  <polygon fill="#b5121f">
+    <animate attributeName="points"
+             dur="1.6s"
+             repeatCount="indefinite"
+             values="
+               31,33 33,33 32,33 32,33 ;
+               25,37 39,37 32,33 32,33 ;
+               16,51 48,51 32,33 32,33 ;
+               16,51 48,51 32,33 32,33
+             "/>
+  </polygon>
+
+  <!-- ==== GOTAS CAYENDO ==== -->
+  <circle cx="32" cy="32" r="1.6" fill="#e2242f">
+    <animate attributeName="cy" values="32;48;48" keyTimes="0;0.7;1" dur="0.8s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0" keyTimes="0;0.7;1" dur="0.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="32" cy="32" r="1.6" fill="#e2242f">
+    <animate attributeName="cy" values="32;48;48" keyTimes="0;0.7;1" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0" keyTimes="0;0.7;1" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+  </circle>
+</svg>

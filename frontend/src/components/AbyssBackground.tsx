@@ -55,35 +55,34 @@ const FRAGMENT_SHADER = /* glsl */ `
   }
 
   void main() {
-    // Coordenadas normalizadas con distorsión por tiempo
+    // Coordenadas con distorsión más rápida
     vec2 uv = v_uv;
-    uv.x += sin(uv.y * 3.0 + u_time * 0.2) * 0.02;
-    uv.y += cos(uv.x * 2.5 + u_time * 0.15) * 0.02;
+    uv.x += sin(uv.y * 4.0 + u_time * 0.35) * 0.03;
+    uv.y += cos(uv.x * 3.5 + u_time * 0.28) * 0.03;
 
-    // Escala base + desplazamiento lento (el "humo")
-    // Capas individuales de ruido
-    float n1 = fbm(uv * 2.5 + u_time * 0.08);
-    float n2 = fbm(uv * 4.0 - u_time * 0.05 + 1.0);
-    float n3 = fbm(uv * 6.0 + u_time * 0.03 + 2.0);
+    // --- Ruido base con más velocidad ---
+    float n1 = fbm(uv * 3.0 + u_time * 0.18);
+    float n2 = fbm(uv * 5.0 - u_time * 0.12 + 1.0);
+    float n3 = fbm(uv * 7.0 + u_time * 0.08 + 2.0);
+    float noise = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
 
-    // --- MAPEO ESPECTRAL: 3 colores por banda de frecuencia ---
-    // Baja frecuencia (n1): azul profundo — ondulaciones lentas
-    vec3 blueDeep = vec3(0.02, 0.05, 0.18);
-    float blueZone = smoothstep(0.2, 0.5, n1) * 0.4;
+    // --- LUMA KEY: extraer solo zonas brillantes del ruido ---
+    float glow = smoothstep(0.45, 0.72, noise);
 
-    // Media frecuencia (n2): rojo sangre — textura principal
-    vec3 blood = vec3(0.545, 0.0, 0.0);
-    float bloodZone = smoothstep(0.4, 0.7, n2) * u_blood_factor;
+    // --- FAKE GAUSSIAN BLUR: muestrear vecinos en single pass ---
+    float blur = glow * 0.4;
+    blur += fbm((uv + vec2(0.012, 0.0)) * 3.0 + u_time * 0.18) * 0.15;
+    blur += fbm((uv + vec2(-0.012, 0.0)) * 3.0 + u_time * 0.18) * 0.15;
+    blur += fbm((uv + vec2(0.0, 0.012)) * 3.0 + u_time * 0.18) * 0.15;
+    blur += fbm((uv + vec2(0.0, -0.012)) * 3.0 + u_time * 0.18) * 0.15;
+    blur = clamp(blur, 0.0, 1.0);
 
-    // Alta frecuencia (n3): blanco — destellos finos
-    vec3 whiteSpark = vec3(0.6, 0.55, 0.5);
-    float whiteZone = smoothstep(0.55, 0.8, n3) * 0.3;
-
-    // Mezcla: base oscura + bandas de color
-    vec3 color = vec3(0.02); // negro base
-    color = mix(color, blueDeep, blueZone);
-    color = mix(color, blood, bloodZone * 0.6);
-    color = mix(color, whiteSpark, whiteZone);
+    // --- COLOR: azul profundo brillante sobre fondo negro ---
+    vec3 color = vec3(0.0); // negro puro
+    vec3 azul = vec3(0.0, 0.12, 0.4);
+    vec3 cian = vec3(0.0, 0.15, 0.22);
+    color = mix(color, azul, blur * 1.0);
+    color = mix(color, cian, blur * blur * 0.4);
 
     gl_FragColor = vec4(color, 1.0);
   }

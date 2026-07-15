@@ -45,13 +45,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function handleLogin(sendResponse: (response: object) => void) {
   try {
     const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
+
+    // Prompt solo la primera vez: si ya hay token, Google omite la pantalla
+    const { nocturne_token } = await chrome.storage.local.get("nocturne_token");
+    const prompt = nocturne_token ? "" : "consent";
+
     const authUrl =
       `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${CLIENT_ID}&` +
       `response_type=code&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `scope=${encodeURIComponent("openid email https://www.googleapis.com/auth/youtube.force-ssl")}&` +
-      `access_type=offline&prompt=consent`;
+      `access_type=offline${prompt ? `&prompt=${prompt}` : ""}`;
 
     const responseUrl = await chrome.identity.launchWebAuthFlow({
       url: authUrl,
@@ -79,6 +84,19 @@ async function handleLogin(sendResponse: (response: object) => void) {
         nocturne_token: data.token,
         nocturne_user: data.user,
       });
+
+      // Si hay un snapshot congelado (logout previo), reanimar su polling
+      const result: Record<string, any> = await chrome.storage.local.get("last_job_status");
+      const last_job_status = result.last_job_status;
+      if (
+        last_job_status?.jobId &&
+        last_job_status.status !== "DONE" &&
+        last_job_status.status !== "FAILED"
+      ) {
+        await chrome.storage.local.set({ active_job_id: last_job_status.jobId });
+        chrome.alarms.create("poll-status", { periodInMinutes: 1 });
+        checkJobStatus(last_job_status.jobId);
+      }
 
       // [NUEVO]: Sincronización inmediata tras el login
       // Intentamos ver si el usuario dejó algún trabajo a medias en la nube
@@ -207,8 +225,8 @@ async function checkJobStatus(jobId: string) {
 
         chrome.notifications.create({
           type: "basic",
-          iconUrl: "vite.svg",
-          title: "Nocturne Ritual",
+          iconUrl: "",
+          title: "Nocturne Update",
           message: `El proceso ha finalizado: ${data.status}`,
         });
       }
