@@ -45,13 +45,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function handleLogin(sendResponse: (response: object) => void) {
   try {
     const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
+
+    // Prompt solo la primera vez: si ya hay token, Google omite la pantalla
+    const { nocturne_token } = await chrome.storage.local.get("nocturne_token");
+    const prompt = nocturne_token ? "" : "consent";
+
     const authUrl =
       `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${CLIENT_ID}&` +
       `response_type=code&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `scope=${encodeURIComponent("openid email https://www.googleapis.com/auth/youtube.force-ssl")}&` +
-      `access_type=offline&prompt=consent`;
+      `access_type=offline${prompt ? `&prompt=${prompt}` : ""}`;
 
     const responseUrl = await chrome.identity.launchWebAuthFlow({
       url: authUrl,
