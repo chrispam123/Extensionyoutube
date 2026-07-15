@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "./components/Layout";
 import RelicToggle from "./components/RelicToggle";
+import hourglassLoader from "./assets/hourglass-loader.svg";
 import "./styles/Initiation.css";
 
 interface JobStatus {
@@ -155,7 +156,8 @@ function App() {
                 onClick={handleDownload}
                 style={{ marginTop: "1.5rem" }}
               >
-                <span className="btn-text">📥 DESCARGAR JSON</span>
+                <span className="cross-motif cross-inverted"></span>
+                <span className="btn-text">DESCARGA TUS GEMAS</span>
               </button>
             )}
             <button
@@ -194,7 +196,11 @@ function App() {
             </div>
             <h2 className="display-count">{job.doneCount}</h2>
             <p className="hero-text">VÍNCULOS ESTABLECIDOS</p>
-            <div className="loader-line"></div>
+            <img
+              src={hourglassLoader}
+              alt="Procesando"
+              className="hourglass-loader"
+            />
           </div>
           <button
             onClick={logout}
