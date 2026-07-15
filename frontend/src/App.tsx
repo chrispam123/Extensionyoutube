@@ -105,9 +105,14 @@ function App() {
   };
 
   const logout = () => {
-    chrome.storage.local.clear(() => {
-      setUserEmail(null);
-      setJob(null);
+    // Preservar el estado del job para recuperarlo al re-login
+    chrome.storage.local.get(["last_job_status"], (result) => {
+      const snapshot = result.last_job_status;
+      chrome.storage.local.clear(() => {
+        if (snapshot) chrome.storage.local.set({ last_job_status: snapshot });
+        setUserEmail(null);
+        setJob(null);
+      });
     });
   };
 
