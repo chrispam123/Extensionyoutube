@@ -117,6 +117,9 @@ jobs:
       - name: Build Extension
         working-directory: frontend
         run: npm run build
+      - name: Strip key for Chrome Web Store
+        working-directory: frontend
+        run: node -e "const m=require('./dist/manifest.json'); delete m.key; require('fs').writeFileSync('./dist/manifest.json', JSON.stringify(m, null, 2))"
       - name: Upload Production Artifact
         uses: actions/upload-artifact@v4
         with:
