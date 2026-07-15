@@ -225,8 +225,8 @@ async function checkJobStatus(jobId: string) {
 
         chrome.notifications.create({
           type: "basic",
-          iconUrl: "vite.svg",
-          title: "Nocturne Ritual",
+          iconUrl: "",
+          title: "Nocturne Update",
           message: `El proceso ha finalizado: ${data.status}`,
         });
       }
