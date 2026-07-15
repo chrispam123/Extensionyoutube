@@ -85,6 +85,19 @@ async function handleLogin(sendResponse: (response: object) => void) {
         nocturne_user: data.user,
       });
 
+      // Si hay un snapshot congelado (logout previo), reanimar su polling
+      const result: Record<string, any> = await chrome.storage.local.get("last_job_status");
+      const last_job_status = result.last_job_status;
+      if (
+        last_job_status?.jobId &&
+        last_job_status.status !== "DONE" &&
+        last_job_status.status !== "FAILED"
+      ) {
+        await chrome.storage.local.set({ active_job_id: last_job_status.jobId });
+        chrome.alarms.create("poll-status", { periodInMinutes: 1 });
+        checkJobStatus(last_job_status.jobId);
+      }
+
       // [NUEVO]: Sincronización inmediata tras el login
       // Intentamos ver si el usuario dejó algún trabajo a medias en la nube
       await syncActiveJob();
