@@ -83,7 +83,7 @@ jobs:
           TF_VAR_aws_region: "us-east-1"
           TF_VAR_use_localstack: "false"
           TF_VAR_environment: "prod"
-          TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp"
+          TF_VAR_extension_id: "gegaeadnamiaaeojgjciajdpdleaokge"
         run: |
           terraform init
           terraform apply -auto-approve -input=false
