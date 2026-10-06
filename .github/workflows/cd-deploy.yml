@@ -44,6 +44,7 @@ jobs:
     environment: development
     outputs:
       api_url: ${{ steps.get_url.outputs.api_url }}
+      s3_bucket: ${{ steps.get_url.outputs.s3_bucket }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -103,6 +104,8 @@ jobs:
         run: |
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
+          BUCKET=$(terraform output -raw s3_bucket_name)
+          echo "s3_bucket=$BUCKET" >> $GITHUB_OUTPUT
 
   build-frontend:
     needs: deploy-dev
@@ -126,6 +129,11 @@ jobs:
       - name: Build Extension
         working-directory: frontend
         run: npm run build
+      - name: Configure Manifest for Environment
+        working-directory: frontend
+        env:
+          S3_BUCKET: ${{ needs.deploy-dev.outputs.s3_bucket }}
+        run: npm run configure:manifest
       - name: Upload Dev Artifact
         uses: actions/upload-artifact@v4
         with:

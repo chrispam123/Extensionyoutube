@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "configure:manifest": "node scripts/configure-manifest.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

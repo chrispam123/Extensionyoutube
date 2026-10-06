@@ -39,6 +39,7 @@ jobs:
     environment: production
     outputs:
       api_url: ${{ steps.get_url.outputs.api_url }}
+      s3_bucket: ${{ steps.get_url.outputs.s3_bucket }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -94,6 +95,8 @@ jobs:
         run: |
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
+          BUCKET=$(terraform output -raw s3_bucket_name)
+          echo "s3_bucket=$BUCKET" >> $GITHUB_OUTPUT
 
   build-frontend:
     needs: deploy-prod
@@ -117,6 +120,11 @@ jobs:
       - name: Build Extension
         working-directory: frontend
         run: npm run build
+      - name: Configure Manifest for Environment
+        working-directory: frontend
+        env:
+          S3_BUCKET: ${{ needs.deploy-prod.outputs.s3_bucket }}
+        run: npm run configure:manifest
       - name: Strip key for Chrome Web Store
         working-directory: frontend
         run: node -e "const m=require('./dist/manifest.json'); delete m.key; require('fs').writeFileSync('./dist/manifest.json', JSON.stringify(m, null, 2))"
