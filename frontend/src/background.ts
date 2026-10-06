@@ -17,6 +17,11 @@ chrome.runtime.onInstalled.addListener((details) => {
 const API_URL = import.meta.env.VITE_API_URL;
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+type StoredJobStatus = {
+  jobId?: string;
+  status?: string;
+};
+
 // 2. ESCUCHA DE COMANDOS DESDE EL POPUP (REACT)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   switch (message.action) {
@@ -86,8 +91,8 @@ async function handleLogin(sendResponse: (response: object) => void) {
       });
 
       // Si hay un snapshot congelado (logout previo), reanimar su polling
-      const result: Record<string, any> = await chrome.storage.local.get("last_job_status");
-      const last_job_status = result.last_job_status;
+      const result = await chrome.storage.local.get("last_job_status");
+      const last_job_status = result.last_job_status as StoredJobStatus | undefined;
       if (
         last_job_status?.jobId &&
         last_job_status.status !== "DONE" &&

@@ -4,9 +4,14 @@ on:
   push:
     branches:
       - develop
+      - main
       - "feature/*" # <--- Esto activa el CI en tus ramas de trabajo
   pull_request:
     branches: [main, develop]
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   validate:
@@ -32,10 +37,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+        run: pipx install poetry
+
+      - name: Configure Poetry
+        run: |
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
 
       - name: Load cached venv
         id: cached-poetry-dependencies
@@ -45,7 +52,6 @@ jobs:
           key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
       - name: Lint with Black
@@ -53,3 +59,74 @@ jobs:
 
       - name: Run Tests
         run: poetry run pytest
+
+      - name: Install Poetry export plugin
+        run: pipx inject poetry poetry-plugin-export
+
+      - name: Build Lambda Artifacts for Terraform Validation
+        run: |
+          rm -rf dist/
+          mkdir -p dist/worker dist/dispatcher dist/status dist/upload dist/auth dist/resumer
+          poetry export -f requirements.txt --output dist/requirements.txt
+
+          for cmd in worker dispatcher status upload auth resumer; do
+            echo "📦 Empaquetando $cmd..."
+            pip install -r dist/requirements.txt -t dist/$cmd/ --ignore-installed --quiet
+            if [ "$cmd" == "worker" ]; then cp src/worker/handler.py dist/worker/; fi
+            if [ "$cmd" == "dispatcher" ]; then cp src/dispatcher/dispatcher.py dist/dispatcher/; fi
+            if [ "$cmd" == "status" ]; then cp src/status/status.py dist/status/; fi
+            if [ "$cmd" == "upload" ]; then cp src/upload/upload.py dist/upload/; fi
+            if [ "$cmd" == "auth" ]; then cp src/auth/auth_handler.py dist/auth/; fi
+            if [ "$cmd" == "resumer" ]; then cp src/resumer/resumer.py dist/resumer/; fi
+            cp -r src/shared dist/$cmd/
+            cd dist/$cmd && zip -r ../$cmd.zip . > /dev/null && cd ../..
+          done
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: |
+          terraform fmt -check -diff -recursive infra/environments/dev
+          terraform fmt -check -diff -recursive infra/environments/prod
+
+      - name: Initialize Terraform without remote backend
+        run: |
+          terraform -chdir=infra/environments/dev init -backend=false -input=false -upgrade=false
+          terraform -chdir=infra/environments/prod init -backend=false -input=false -upgrade=false
+
+      - name: Validate Terraform
+        run: |
+          terraform -chdir=infra/environments/dev validate
+          terraform -chdir=infra/environments/prod validate
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  deploy-dev:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+    needs: validate
+    uses: ./.github/workflows/cd-deploy.yml
+    secrets: inherit
+
+  deploy-prod:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: validate
+    uses: ./.github/workflows/cd-prod.yml
+    secrets: inherit

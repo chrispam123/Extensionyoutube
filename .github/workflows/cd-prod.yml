@@ -1,8 +1,7 @@
 name: CD Deployment (Production)
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   id-token: write
@@ -21,6 +20,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install Poetry
         run: pipx install poetry
       - name: Set up Python 3.12
@@ -39,9 +40,12 @@ jobs:
     environment: production
     outputs:
       api_url: ${{ steps.get_url.outputs.api_url }}
+      s3_bucket: ${{ steps.get_url.outputs.s3_bucket }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install Poetry
         run: pipx install poetry
       - name: Set up Python 3.12
@@ -94,6 +98,8 @@ jobs:
         run: |
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
+          BUCKET=$(terraform output -raw s3_bucket_name)
+          echo "s3_bucket=$BUCKET" >> $GITHUB_OUTPUT
 
   build-frontend:
     needs: deploy-prod
@@ -102,6 +108,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -117,6 +125,11 @@ jobs:
       - name: Build Extension
         working-directory: frontend
         run: npm run build
+      - name: Configure Manifest for Environment
+        working-directory: frontend
+        env:
+          S3_BUCKET: ${{ needs.deploy-prod.outputs.s3_bucket }}
+        run: npm run configure:manifest
       - name: Strip key for Chrome Web Store
         working-directory: frontend
         run: node -e "const m=require('./dist/manifest.json'); delete m.key; require('fs').writeFileSync('./dist/manifest.json', JSON.stringify(m, null, 2))"

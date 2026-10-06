@@ -1,8 +1,7 @@
 name: CD Deployment (Dev)
 
 on:
-  push:
-    branches: [develop]
+  workflow_call:
 
 permissions:
   id-token: write
@@ -21,6 +20,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       # --- CORRECCIÓN: INSTALAR POETRY ANTES DE SETUP-PYTHON ---
       - name: Install Poetry
@@ -44,9 +45,12 @@ jobs:
     environment: development
     outputs:
       api_url: ${{ steps.get_url.outputs.api_url }}
+      s3_bucket: ${{ steps.get_url.outputs.s3_bucket }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Install Poetry
         run: pipx install poetry
@@ -103,6 +107,8 @@ jobs:
         run: |
           URL=$(terraform output -raw api_url)
           echo "api_url=$URL" >> $GITHUB_OUTPUT
+          BUCKET=$(terraform output -raw s3_bucket_name)
+          echo "s3_bucket=$BUCKET" >> $GITHUB_OUTPUT
 
   build-frontend:
     needs: deploy-dev
@@ -111,6 +117,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -126,6 +134,11 @@ jobs:
       - name: Build Extension
         working-directory: frontend
         run: npm run build
+      - name: Configure Manifest for Environment
+        working-directory: frontend
+        env:
+          S3_BUCKET: ${{ needs.deploy-dev.outputs.s3_bucket }}
+        run: npm run configure:manifest
       - name: Upload Dev Artifact
         uses: actions/upload-artifact@v4
         with:
