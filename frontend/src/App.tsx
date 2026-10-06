@@ -88,7 +88,7 @@ function App() {
         options,
         payload: fileContent,
       });
-    } catch (e) {
+    } catch {
       alert("Archivo inválido");
       setLoading(false);
     }
