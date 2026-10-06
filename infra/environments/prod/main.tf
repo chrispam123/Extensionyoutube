@@ -328,7 +328,8 @@ resource "aws_ssm_parameter" "google_client_id" {
 
 resource "aws_ssm_parameter" "google_client_secret" {
   name  = "/extension/${var.environment}/google/client_secret"
-  type  = "String"
+  type  = "SecureString"
+  key_id = aws_kms_key.token_key.arn
   value = "REPLACE_ME"
   # ESTO ES VITAL:Crea el parámetro la primera vez, pero después ignora si el valor cambia asi ejecutes 100 veces
   lifecycle {
@@ -339,7 +340,8 @@ resource "aws_ssm_parameter" "google_client_secret" {
 #  SECRETO PARA FIRMAR JWT
 resource "aws_ssm_parameter" "jwt_secret" {
   name  = "/extension/${var.environment}/auth/jwt_secret"
-  type  = "String" # En prod será SecureString KMS
+  type  = "SecureString"
+  key_id = aws_kms_key.token_key.arn
   value = "REPLACE_ME_WITH_RANDOM_STRING"
 
   lifecycle {
