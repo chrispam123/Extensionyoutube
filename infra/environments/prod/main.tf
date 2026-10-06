@@ -95,7 +95,7 @@ resource "aws_sqs_queue" "jobs_dlq" {
 resource "aws_sqs_queue" "jobs_queue" {
   name = "extension-sqs-work-${var.environment}"
 
-  visibility_timeout_seconds = 60  # Debe ser >= timeout de la Lambda worker
+  visibility_timeout_seconds = 60 # Debe ser >= timeout de la Lambda worker
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.jobs_dlq.arn
@@ -327,10 +327,10 @@ resource "aws_ssm_parameter" "google_client_id" {
 }
 
 resource "aws_ssm_parameter" "google_client_secret" {
-  name  = "/extension/${var.environment}/google/client_secret"
-  type  = "SecureString"
+  name   = "/extension/${var.environment}/google/client_secret"
+  type   = "SecureString"
   key_id = aws_kms_key.token_key.arn
-  value = "REPLACE_ME"
+  value  = "REPLACE_ME"
   # ESTO ES VITAL:Crea el parámetro la primera vez, pero después ignora si el valor cambia asi ejecutes 100 veces
   lifecycle {
     ignore_changes = [value]
@@ -339,10 +339,10 @@ resource "aws_ssm_parameter" "google_client_secret" {
 
 #  SECRETO PARA FIRMAR JWT
 resource "aws_ssm_parameter" "jwt_secret" {
-  name  = "/extension/${var.environment}/auth/jwt_secret"
-  type  = "SecureString"
+  name   = "/extension/${var.environment}/auth/jwt_secret"
+  type   = "SecureString"
   key_id = aws_kms_key.token_key.arn
-  value = "REPLACE_ME_WITH_RANDOM_STRING"
+  value  = "REPLACE_ME_WITH_RANDOM_STRING"
 
   lifecycle {
     ignore_changes = [value]
@@ -720,9 +720,9 @@ resource "aws_iam_role_policy" "upload_permissions" {
       },
 
       {
-        Sid    = "AllowSSMReadJWTSecret"
-        Action = ["ssm:GetParameter"]
-        Effect = "Allow"
+        Sid      = "AllowSSMReadJWTSecret"
+        Action   = ["ssm:GetParameter"]
+        Effect   = "Allow"
         Resource = aws_ssm_parameter.jwt_secret.arn
       },
 
