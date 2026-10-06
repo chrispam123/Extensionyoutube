@@ -1,10 +1,7 @@
 name: CD Deployment (Dev)
 
 on:
-  workflow_run:
-    workflows: ["CI Validation"]
-    types: [completed]
-    branches: [develop]
+  workflow_call:
 
 permissions:
   id-token: write
@@ -25,7 +22,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
 
       # --- CORRECCIÓN: INSTALAR POETRY ANTES DE SETUP-PYTHON ---
       - name: Install Poetry
@@ -54,7 +51,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
 
       - name: Install Poetry
         run: pipx install poetry
@@ -122,7 +119,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
