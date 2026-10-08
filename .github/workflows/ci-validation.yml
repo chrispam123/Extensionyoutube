@@ -89,16 +89,19 @@ jobs:
         run: |
           terraform fmt -check -diff -recursive infra/environments/dev
           terraform fmt -check -diff -recursive infra/environments/prod
+          terraform fmt -check -diff -recursive infra/observability
 
       - name: Initialize Terraform without remote backend
         run: |
           terraform -chdir=infra/environments/dev init -backend=false -input=false -upgrade=false
           terraform -chdir=infra/environments/prod init -backend=false -input=false -upgrade=false
+          terraform -chdir=infra/observability/environments/dev init -backend=false -input=false -upgrade=false
 
       - name: Validate Terraform
         run: |
           terraform -chdir=infra/environments/dev validate
           terraform -chdir=infra/environments/prod validate
+          terraform -chdir=infra/observability/environments/dev validate
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

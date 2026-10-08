@@ -110,6 +110,38 @@ jobs:
           BUCKET=$(terraform output -raw s3_bucket_name)
           echo "s3_bucket=$BUCKET" >> $GITHUB_OUTPUT
 
+  deploy-observability-dev:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply Observability
+        working-directory: infra/observability/environments/dev
+        env:
+          TF_VAR_aws_region: "us-east-1"
+          TF_VAR_environment: "develop"
+          TF_VAR_observed_worker_function: "extension-worker-develop"
+          TF_VAR_worker_timeout_ms: "60000"
+          TF_VAR_log_retention_days: "14"
+        run: |
+          mkdir -p ../../../../dist
+          terraform init
+          terraform apply -auto-approve -input=false
+
   build-frontend:
     needs: deploy-dev
     runs-on: ubuntu-latest
