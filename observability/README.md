@@ -4,7 +4,14 @@ MVP incremental de observabilidad para Nocturne.
 
 ## Alcance de la fase 1
 
-La primera fase observará las Lambdas `worker` de `develop` y `prod` leyendo las métricas existentes de CloudWatch.
+La primera fase observa las seis Lambdas de un entorno leyendo las métricas existentes de CloudWatch:
+
+- `auth`
+- `upload`
+- `dispatcher`
+- `worker`
+- `status`
+- `resumer`
 
 Métricas iniciales:
 
@@ -25,7 +32,7 @@ Lambda Observability
 CloudWatch existente de Nocturne
 ```
 
-La Lambda se probará inicialmente mediante invocación manual. Las fases posteriores podrán añadir SQS, DLQ, API Gateway, DynamoDB, panel web y alertas.
+La Lambda se prueba inicialmente mediante invocación manual. Las fases posteriores podrán añadir SQS, DLQ, API Gateway, DynamoDB, panel web y alertas.
 
 ## Principios
 

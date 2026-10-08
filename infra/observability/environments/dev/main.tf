@@ -76,9 +76,8 @@ resource "aws_lambda_function" "observability" {
 
   environment {
     variables = {
-      ENVIRONMENT                = var.environment
-      OBSERVED_WORKER_FUNCTION   = var.observed_worker_function
-      OBSERVED_WORKER_TIMEOUT_MS = tostring(var.worker_timeout_ms)
+      ENVIRONMENT         = var.environment
+      OBSERVED_COMPONENTS = join(",", var.observed_components)
     }
   }
 

@@ -10,16 +10,10 @@ variable "environment" {
   default     = "develop"
 }
 
-variable "observed_worker_function" {
-  description = "Nombre de la Lambda worker cuyas métricas consulta el MVP."
-  type        = string
-  default     = "extension-worker-develop"
-}
-
-variable "worker_timeout_ms" {
-  description = "Timeout configurado para la worker, usado para calcular el umbral de duración."
-  type        = number
-  default     = 60000
+variable "observed_components" {
+  description = "Componentes Lambda de Nocturne que observará el MVP."
+  type        = list(string)
+  default     = ["auth", "upload", "dispatcher", "worker", "status", "resumer"]
 }
 
 variable "log_retention_days" {
