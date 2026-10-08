@@ -18,6 +18,9 @@ También observa las colas SQS del flujo:
 - `work` y su `dlq`
 - `ingestion` y su `ingestion-dlq`
 
+También consulta los jobs mediante el índice DynamoDB `StatusIndex` y calcula
+recuentos por estado y antigüedad de jobs pendientes o ejecutándose.
+
 Métricas iniciales:
 
 - `Errors`

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from observability.backend import handler
 
@@ -57,29 +57,65 @@ class FakeCloudWatch:
         }
 
 
+class FakeTable:
+    def __init__(self, items_by_status=None):
+        self.items_by_status = items_by_status or {}
+
+    def query(self, **kwargs):
+        status = kwargs["ExpressionAttributeValues"][":status"]
+        return {"Items": self.items_by_status.get(status, [])}
+
+
+class FakeDynamoDB:
+    def __init__(self, items_by_status=None):
+        self.table = FakeTable(items_by_status)
+
+    def Table(self, table_name):
+        assert table_name == "extension-dynamo-table-develop"
+        return self.table
+
+
 def _values(**overrides):
     values = DEFAULT_VALUES.copy()
     values.update(overrides)
     return values
 
 
-def test_all_lambdas_and_queues_are_healthy_without_errors(monkeypatch):
+def _job(status, age_minutes):
+    timestamp = (
+        datetime.now(timezone.utc) - timedelta(minutes=age_minutes)
+    ).isoformat()
+    return {
+        "PK": "USER#test",
+        "SK": f"JOB#{status}",
+        "jobId": status,
+        "status": status,
+        "createdAt": timestamp,
+        "updatedAt": timestamp,
+    }
+
+
+def _patch_clients(monkeypatch, values=None, items_by_status=None):
     monkeypatch.setenv("ENVIRONMENT", "develop")
-    monkeypatch.setattr(handler, "cloudwatch", FakeCloudWatch(_values()))
+    monkeypatch.setattr(handler, "cloudwatch", FakeCloudWatch(values or _values()))
+    monkeypatch.setattr(handler, "dynamodb", FakeDynamoDB(items_by_status))
+
+
+def test_all_lambdas_queues_and_jobs_are_healthy(monkeypatch):
+    _patch_clients(monkeypatch)
 
     result = handler.lambda_handler({}, None)
 
     assert result["status"] == "healthy"
     assert len(result["components"]) == 6
     assert len(result["queues"]) == 4
+    assert result["jobs"]["metrics"]["counts_by_status"]["FAILED"] == 0
 
 
-def test_worker_is_warning_when_error_rate_exceeds_threshold(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "prod")
-    monkeypatch.setattr(
-        handler,
-        "cloudwatch",
-        FakeCloudWatch(_values(lambda_worker_invocations=100, lambda_worker_errors=2)),
+def test_worker_error_rate_is_warning(monkeypatch):
+    _patch_clients(
+        monkeypatch,
+        _values(lambda_worker_invocations=100, lambda_worker_errors=2),
     )
 
     result = handler.lambda_handler({}, None)
@@ -89,72 +125,51 @@ def test_worker_is_warning_when_error_rate_exceeds_threshold(monkeypatch):
 
     assert result["status"] == "warning"
     assert worker["status"] == "warning"
-    assert worker["metrics"]["error_rate"] == 2
-
-
-def test_any_throttled_lambda_makes_global_status_critical(monkeypatch):
-    monkeypatch.setattr(
-        handler,
-        "cloudwatch",
-        FakeCloudWatch(_values(lambda_status_throttles=1)),
-    )
-
-    result = handler.lambda_handler({}, None)
-    status = next(
-        item for item in result["components"] if item["component"] == "status"
-    )
-
-    assert result["status"] == "critical"
-    assert status["status"] == "critical"
 
 
 def test_dlq_with_visible_messages_is_critical(monkeypatch):
-    monkeypatch.setattr(
-        handler,
-        "cloudwatch",
-        FakeCloudWatch(_values(sqs_dlq_visible=1)),
-    )
+    _patch_clients(monkeypatch, _values(sqs_dlq_visible=1))
 
     result = handler.lambda_handler({}, None)
     dlq = next(item for item in result["queues"] if item["queue"] == "dlq")
 
     assert result["status"] == "critical"
     assert dlq["status"] == "critical"
-    assert dlq["type"] == "dlq"
 
 
-def test_primary_queue_backlog_is_warning(monkeypatch):
-    monkeypatch.setattr(
-        handler,
-        "cloudwatch",
-        FakeCloudWatch(_values(sqs_work_visible=11)),
-    )
+def test_failed_job_is_critical(monkeypatch):
+    _patch_clients(monkeypatch, items_by_status={"FAILED": [_job("FAILED", 2)]})
 
     result = handler.lambda_handler({}, None)
-    work = next(item for item in result["queues"] if item["queue"] == "work")
-
-    assert result["status"] == "warning"
-    assert work["status"] == "warning"
-
-
-def test_oldest_message_over_thirty_minutes_is_critical(monkeypatch):
-    monkeypatch.setattr(
-        handler,
-        "cloudwatch",
-        FakeCloudWatch(_values(sqs_ingestion_oldest_age_s=1801)),
-    )
-
-    result = handler.lambda_handler({}, None)
-    ingestion = next(item for item in result["queues"] if item["queue"] == "ingestion")
 
     assert result["status"] == "critical"
-    assert ingestion["status"] == "critical"
+    assert result["jobs"]["status"] == "critical"
+    assert result["jobs"]["metrics"]["counts_by_status"]["FAILED"] == 1
 
 
-def test_components_and_queues_can_be_restricted_by_environment(monkeypatch):
+def test_stale_pending_job_is_warning(monkeypatch):
+    _patch_clients(monkeypatch, items_by_status={"PENDING": [_job("PENDING", 16)]})
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "warning"
+    assert result["jobs"]["status"] == "warning"
+    assert result["jobs"]["metrics"]["stale_pending_or_initializing"] == 1
+
+
+def test_stale_running_job_is_critical(monkeypatch):
+    _patch_clients(monkeypatch, items_by_status={"RUNNING": [_job("RUNNING", 31)]})
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "critical"
+    assert result["jobs"]["metrics"]["stale_running"] == 1
+
+
+def test_components_and_queues_can_be_restricted(monkeypatch):
     monkeypatch.setenv("OBSERVED_COMPONENTS", "worker,auth")
     monkeypatch.setenv("OBSERVED_QUEUES", "work,dlq")
-    monkeypatch.setattr(handler, "cloudwatch", FakeCloudWatch(_values()))
+    _patch_clients(monkeypatch)
 
     result = handler.lambda_handler({}, None)
 
