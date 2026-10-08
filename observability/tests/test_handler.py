@@ -10,7 +10,7 @@ DEFAULT_VALUES = {
 }
 DEFAULT_VALUES.update(
     {
-        f"sqs_{queue}_{metric}": 0
+        f"sqs_{queue.replace('-', '_')}_{metric}": 0
         for queue in handler.DEFAULT_QUEUES
         for metric in ("visible", "not_visible", "oldest_age_s")
     }
