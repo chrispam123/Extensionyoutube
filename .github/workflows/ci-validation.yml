@@ -5,6 +5,7 @@ on:
     branches:
       - develop
       - main
+      - "feat/*"
       - "feature/*" # <--- Esto activa el CI en tus ramas de trabajo
   pull_request:
     branches: [main, develop]
@@ -108,7 +109,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            observability/frontend/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -120,6 +123,18 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
+        run: npm run build
+
+      - name: Install observability frontend dependencies
+        working-directory: observability/frontend
+        run: npm ci
+
+      - name: Lint observability frontend
+        working-directory: observability/frontend
+        run: npm run lint
+
+      - name: Build observability frontend
+        working-directory: observability/frontend
         run: npm run build
 
   deploy-dev:
