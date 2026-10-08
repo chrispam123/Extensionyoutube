@@ -135,6 +135,7 @@ jobs:
           TF_VAR_aws_region: "us-east-1"
           TF_VAR_environment: "develop"
           TF_VAR_observed_components: '["auth", "upload", "dispatcher", "worker", "status", "resumer"]'
+          TF_VAR_observed_queues: '["work", "dlq", "ingestion", "ingestion-dlq"]'
           TF_VAR_log_retention_days: "14"
         run: |
           mkdir -p ../../../../dist

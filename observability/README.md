@@ -13,6 +13,11 @@ La primera fase observa las seis Lambdas de un entorno leyendo las métricas exi
 - `status`
 - `resumer`
 
+También observa las colas SQS del flujo:
+
+- `work` y su `dlq`
+- `ingestion` y su `ingestion-dlq`
+
 Métricas iniciales:
 
 - `Errors`
@@ -32,7 +37,7 @@ Lambda Observability
 CloudWatch existente de Nocturne
 ```
 
-La Lambda se prueba inicialmente mediante invocación manual. Las fases posteriores podrán añadir SQS, DLQ, API Gateway, DynamoDB, panel web y alertas.
+La Lambda se prueba inicialmente mediante invocación manual. Las fases posteriores podrán añadir API Gateway, DynamoDB, panel web y alertas.
 
 ## Principios
 

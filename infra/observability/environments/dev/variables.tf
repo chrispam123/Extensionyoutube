@@ -16,6 +16,12 @@ variable "observed_components" {
   default     = ["auth", "upload", "dispatcher", "worker", "status", "resumer"]
 }
 
+variable "observed_queues" {
+  description = "Colas SQS y DLQ de Nocturne que observará el MVP."
+  type        = list(string)
+  default     = ["work", "dlq", "ingestion", "ingestion-dlq"]
+}
+
 variable "log_retention_days" {
   description = "Retención de logs de la Lambda de observabilidad."
   type        = number

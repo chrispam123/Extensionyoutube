@@ -78,6 +78,7 @@ resource "aws_lambda_function" "observability" {
     variables = {
       ENVIRONMENT         = var.environment
       OBSERVED_COMPONENTS = join(",", var.observed_components)
+      OBSERVED_QUEUES     = join(",", var.observed_queues)
     }
   }
 
