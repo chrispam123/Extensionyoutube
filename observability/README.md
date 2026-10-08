@@ -21,6 +21,9 @@ También observa las colas SQS del flujo:
 También consulta los jobs mediante el índice DynamoDB `StatusIndex` y calcula
 recuentos por estado y antigüedad de jobs pendientes o ejecutándose.
 
+También consulta el HTTP API Gateway del entorno para observar peticiones,
+errores `4xx`/`5xx` y latencia p95.
+
 Métricas iniciales:
 
 - `Errors`

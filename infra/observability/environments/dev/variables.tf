@@ -27,3 +27,15 @@ variable "log_retention_days" {
   type        = number
   default     = 14
 }
+
+variable "api_gateway_stage" {
+  description = "Stage del HTTP API de Nocturne que se observará."
+  type        = string
+  default     = "develop"
+}
+
+variable "api_gateway_id" {
+  description = "ID del HTTP API de Nocturne que se observará."
+  type        = string
+  default     = "pugu65me5k"
+}

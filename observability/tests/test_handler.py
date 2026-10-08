@@ -15,6 +15,14 @@ DEFAULT_VALUES.update(
         for metric in ("visible", "not_visible", "oldest_age_s")
     }
 )
+DEFAULT_VALUES.update(
+    {
+        "api_requests": 0,
+        "api_errors_5xx": 0,
+        "api_errors_4xx": 0,
+        "api_latency_p95_ms": 0,
+    }
+)
 
 
 class FakeCloudWatch:
@@ -46,7 +54,11 @@ class FakeCloudWatch:
                 if item.strip()
             ]
         )
-        assert len(kwargs["MetricDataQueries"]) == component_count * 4 + queue_count * 3
+        api_query_count = 4 if os.getenv("API_GATEWAY_ID") else 0
+        assert (
+            len(kwargs["MetricDataQueries"])
+            == component_count * 4 + queue_count * 3 + api_query_count
+        )
         assert isinstance(kwargs["StartTime"], datetime)
         assert isinstance(kwargs["EndTime"], datetime)
         return {
@@ -97,6 +109,8 @@ def _job(status, age_minutes):
 
 def _patch_clients(monkeypatch, values=None, items_by_status=None):
     monkeypatch.setenv("ENVIRONMENT", "develop")
+    monkeypatch.setenv("API_GATEWAY_ID", "api-test")
+    monkeypatch.setenv("API_GATEWAY_STAGE", "develop")
     monkeypatch.setattr(handler, "cloudwatch", FakeCloudWatch(values or _values()))
     monkeypatch.setattr(handler, "dynamodb", FakeDynamoDB(items_by_status))
 
@@ -135,6 +149,25 @@ def test_dlq_with_visible_messages_is_critical(monkeypatch):
 
     assert result["status"] == "critical"
     assert dlq["status"] == "critical"
+
+
+def test_api_gateway_5xx_rate_is_critical(monkeypatch):
+    _patch_clients(monkeypatch, _values(api_requests=100, api_errors_5xx=2))
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "critical"
+    assert result["api_gateway"]["status"] == "critical"
+    assert result["api_gateway"]["metrics"]["error_rate_5xx"] == 2
+
+
+def test_api_gateway_latency_is_warning(monkeypatch):
+    _patch_clients(monkeypatch, _values(api_requests=20, api_latency_p95_ms=2001))
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "warning"
+    assert result["api_gateway"]["status"] == "warning"
 
 
 def test_failed_job_is_critical(monkeypatch):

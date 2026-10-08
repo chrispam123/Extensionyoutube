@@ -10,6 +10,7 @@ import boto3
 
 METRIC_NAMESPACE = "AWS/Lambda"
 QUEUE_METRIC_NAMESPACE = "AWS/SQS"
+API_GATEWAY_METRIC_NAMESPACE = "AWS/ApiGateway"
 WINDOW_MINUTES = 5
 DEFAULT_TIMEOUT_MS = 60_000
 DEFAULT_COMPONENTS = ("auth", "upload", "dispatcher", "worker", "status", "resumer")
@@ -34,6 +35,9 @@ QUEUE_DEFINITIONS = {
 STATUS_PRIORITY = {"healthy": 0, "warning": 1, "critical": 2}
 QUEUE_WARNING_VISIBLE = 10
 QUEUE_CRITICAL_AGE_SECONDS = 30 * 60
+API_MIN_REQUESTS_FOR_ERROR_RATE = 10
+API_CRITICAL_5XX_RATE = 1.0
+API_WARNING_LATENCY_MS = 2_000
 
 cloudwatch = None
 dynamodb = None
@@ -91,12 +95,24 @@ def _observed_queues(environment: str) -> list[dict[str, Any]]:
     return queues
 
 
+def _observed_api_gateway(environment: str) -> dict[str, str] | None:
+    api_id = os.getenv("API_GATEWAY_ID")
+    if not api_id:
+        return None
+    return {
+        "api_id": api_id,
+        "stage": os.getenv("API_GATEWAY_STAGE", environment),
+    }
+
+
 def _queue_metric_prefix(queue_id: str) -> str:
     return queue_id.replace("-", "_")
 
 
 def _metric_queries(
-    components: list[dict[str, Any]], queues: list[dict[str, Any]]
+    components: list[dict[str, Any]],
+    queues: list[dict[str, Any]],
+    api_gateway: dict[str, str] | None,
 ) -> list[dict[str, Any]]:
     queries = []
     lambda_metrics = [
@@ -109,6 +125,12 @@ def _metric_queries(
         ("visible", "ApproximateNumberOfMessagesVisible", "Maximum"),
         ("not_visible", "ApproximateNumberOfMessagesNotVisible", "Maximum"),
         ("oldest_age_s", "ApproximateAgeOfOldestMessage", "Maximum"),
+    ]
+    api_metrics = [
+        ("requests", "Count", "Sum"),
+        ("errors_5xx", "5XXError", "Sum"),
+        ("errors_4xx", "4XXError", "Sum"),
+        ("latency_p95_ms", "Latency", "p95"),
     ]
 
     for item in components:
@@ -140,6 +162,28 @@ def _metric_queries(
                     "MetricStat": {
                         "Metric": {
                             "Namespace": QUEUE_METRIC_NAMESPACE,
+                            "MetricName": metric_name,
+                            "Dimensions": dimensions,
+                        },
+                        "Period": WINDOW_MINUTES * 60,
+                        "Stat": statistic,
+                    },
+                    "ReturnData": True,
+                }
+            )
+
+    if api_gateway:
+        dimensions = [
+            {"Name": "ApiId", "Value": api_gateway["api_id"]},
+            {"Name": "Stage", "Value": api_gateway["stage"]},
+        ]
+        for metric_id, metric_name, statistic in api_metrics:
+            queries.append(
+                {
+                    "Id": f"api_{metric_id}",
+                    "MetricStat": {
+                        "Metric": {
+                            "Namespace": API_GATEWAY_METRIC_NAMESPACE,
                             "MetricName": metric_name,
                             "Dimensions": dimensions,
                         },
@@ -307,6 +351,42 @@ def _job_result(table: Any, now: datetime) -> dict[str, Any]:
     }
 
 
+def _api_gateway_result(
+    api_gateway: dict[str, str] | None, values: dict[str, float]
+) -> dict[str, Any] | None:
+    if not api_gateway:
+        return None
+
+    requests = values.get("api_requests", 0.0)
+    errors_5xx = values.get("api_errors_5xx", 0.0)
+    errors_4xx = values.get("api_errors_4xx", 0.0)
+    latency_p95_ms = values.get("api_latency_p95_ms", 0.0)
+    error_rate_5xx = (errors_5xx / requests * 100) if requests else 0.0
+
+    if (
+        requests >= API_MIN_REQUESTS_FOR_ERROR_RATE
+        and error_rate_5xx > API_CRITICAL_5XX_RATE
+    ):
+        status = "critical"
+    elif latency_p95_ms > API_WARNING_LATENCY_MS:
+        status = "warning"
+    else:
+        status = "healthy"
+
+    return {
+        "api_id": api_gateway["api_id"],
+        "stage": api_gateway["stage"],
+        "status": status,
+        "metrics": {
+            "requests": int(requests),
+            "errors_5xx": int(errors_5xx),
+            "errors_4xx": int(errors_4xx),
+            "error_rate_5xx": round(error_rate_5xx, 2),
+            "latency_p95_ms": round(latency_p95_ms, 2),
+        },
+    }
+
+
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     """Return a five-minute health summary for Lambdas, queues and jobs."""
     del context
@@ -314,12 +394,13 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     environment = os.getenv("ENVIRONMENT", event.get("environment", "develop"))
     components = _observed_components(environment)
     queues = _observed_queues(environment)
+    api_gateway = _observed_api_gateway(environment)
     table_name = os.getenv("DYNAMODB_TABLE", f"extension-dynamo-table-{environment}")
 
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(minutes=WINDOW_MINUTES)
     response = _cloudwatch_client().get_metric_data(
-        MetricDataQueries=_metric_queries(components, queues),
+        MetricDataQueries=_metric_queries(components, queues, api_gateway),
         StartTime=start_time,
         EndTime=end_time,
         ScanBy="TimestampDescending",
@@ -329,10 +410,12 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         _component_result(component, values) for component in components
     ]
     queue_results = [_queue_result(queue, values) for queue in queues]
+    api_result = _api_gateway_result(api_gateway, values)
     job_results = _job_result(_dynamodb_resource().Table(table_name), end_time)
-    statuses = [
-        result["status"] for result in [*component_results, *queue_results, job_results]
-    ]
+    status_results = [*component_results, *queue_results, job_results]
+    if api_result:
+        status_results.append(api_result)
+    statuses = [result["status"] for result in status_results]
     overall_status = max(statuses, key=STATUS_PRIORITY.get, default="healthy")
 
     return {
@@ -341,6 +424,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         "window_minutes": WINDOW_MINUTES,
         "components": component_results,
         "queues": queue_results,
+        "api_gateway": api_result,
         "jobs": job_results,
         "observed_at": end_time.isoformat(),
     }

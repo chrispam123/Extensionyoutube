@@ -136,6 +136,8 @@ jobs:
           TF_VAR_environment: "develop"
           TF_VAR_observed_components: '["auth", "upload", "dispatcher", "worker", "status", "resumer"]'
           TF_VAR_observed_queues: '["work", "dlq", "ingestion", "ingestion-dlq"]'
+          TF_VAR_api_gateway_stage: "develop"
+          TF_VAR_api_gateway_id: "pugu65me5k"
           TF_VAR_log_retention_days: "14"
         run: |
           mkdir -p ../../../../dist
