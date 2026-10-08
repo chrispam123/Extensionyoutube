@@ -141,6 +141,8 @@ jobs:
           TF_VAR_eventbridge_rule_name: "extension-resumer-cron-develop"
           TF_VAR_eventbridge_target_function: "extension-resumer-develop"
           TF_VAR_log_retention_days: "14"
+          TF_VAR_google_client_id: ${{ secrets.COGNITO_GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.COGNITO_GOOGLE_CLIENT_SECRET }}
         run: |
           mkdir -p ../../../../dist
           terraform init
