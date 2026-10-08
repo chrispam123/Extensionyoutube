@@ -252,3 +252,134 @@ resource "aws_cognito_user_pool_client" "observability" {
     "ALLOW_USER_SRP_AUTH"
   ]
 }
+
+resource "aws_s3_bucket" "observability_frontend" {
+  bucket = "extension-observability-frontend-${var.environment}"
+
+  tags = {
+    Project     = "Nocturne"
+    Environment = var.environment
+    Component   = "ObservabilityFrontend"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "observability_frontend" {
+  bucket = aws_s3_bucket.observability_frontend.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "observability_frontend" {
+  bucket = aws_s3_bucket.observability_frontend.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "observability_frontend" {
+  bucket = aws_s3_bucket.observability_frontend.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "observability_frontend" {
+  bucket = aws_s3_bucket.observability_frontend.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_cloudfront_origin_access_control" "observability_frontend" {
+  name                              = "extension-observability-frontend-${var.environment}"
+  description                       = "CloudFront access to the private observability frontend bucket."
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_distribution" "observability_frontend" {
+  enabled             = true
+  default_root_object = "index.html"
+  price_class         = "PriceClass_100"
+
+  origin {
+    domain_name              = aws_s3_bucket.observability_frontend.bucket_regional_domain_name
+    origin_id                = "S3-${aws_s3_bucket.observability_frontend.id}"
+    origin_access_control_id = aws_cloudfront_origin_access_control.observability_frontend.id
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "S3-${aws_s3_bucket.observability_frontend.id}"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD", "OPTIONS"]
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = {
+    Project     = "Nocturne"
+    Environment = var.environment
+    Component   = "ObservabilityFrontend"
+  }
+}
+
+resource "aws_s3_bucket_policy" "observability_frontend" {
+  bucket = aws_s3_bucket.observability_frontend.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCloudFrontReadOnly"
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudfront.amazonaws.com"
+      }
+      Action   = "s3:GetObject"
+      Resource = "${aws_s3_bucket.observability_frontend.arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.observability_frontend.arn
+        }
+      }
+    }]
+  })
+}

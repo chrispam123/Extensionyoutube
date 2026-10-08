@@ -37,3 +37,18 @@ output "cognito_hosted_ui_base_url" {
   description = "URL base del Hosted UI de Cognito."
   value       = "https://${aws_cognito_user_pool_domain.observability.domain}.auth.${var.aws_region}.amazoncognito.com"
 }
+
+output "observability_frontend_bucket_name" {
+  description = "Bucket privado donde se alojará el frontend de observabilidad."
+  value       = aws_s3_bucket.observability_frontend.id
+}
+
+output "observability_frontend_cloudfront_distribution_id" {
+  description = "ID de la distribución CloudFront del frontend de observabilidad."
+  value       = aws_cloudfront_distribution.observability_frontend.id
+}
+
+output "observability_frontend_url" {
+  description = "URL HTTPS del frontend de observabilidad."
+  value       = "https://${aws_cloudfront_distribution.observability_frontend.domain_name}"
+}
