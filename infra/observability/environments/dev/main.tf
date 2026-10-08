@@ -2,6 +2,10 @@ data "aws_dynamodb_table" "jobs" {
   name = "extension-dynamo-table-${var.environment}"
 }
 
+data "aws_apigatewayv2_api" "http" {
+  api_id = var.api_gateway_id
+}
+
 data "archive_file" "observability_lambda" {
   type        = "zip"
   source_dir  = "${path.module}/../../../../observability/backend"
@@ -93,6 +97,8 @@ resource "aws_lambda_function" "observability" {
       OBSERVED_COMPONENTS = join(",", var.observed_components)
       OBSERVED_QUEUES     = join(",", var.observed_queues)
       DYNAMODB_TABLE      = data.aws_dynamodb_table.jobs.name
+      API_GATEWAY_ID      = data.aws_apigatewayv2_api.http.id
+      API_GATEWAY_STAGE   = var.api_gateway_stage
     }
   }
 
