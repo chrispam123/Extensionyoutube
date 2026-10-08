@@ -1,4 +1,4 @@
-"""Read-only CloudWatch metrics handler for the observability MVP."""
+"""Read-only metrics handler for Lambdas, queues and jobs."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ WINDOW_MINUTES = 5
 DEFAULT_TIMEOUT_MS = 60_000
 DEFAULT_COMPONENTS = ("auth", "upload", "dispatcher", "worker", "status", "resumer")
 DEFAULT_QUEUES = ("work", "dlq", "ingestion", "ingestion-dlq")
+JOB_STATUSES = ("INITIALIZING", "PENDING", "RUNNING", "FAILED", "DONE", "PAUSED_QUOTA")
+PENDING_MAX_AGE_SECONDS = 15 * 60
+RUNNING_MAX_AGE_SECONDS = 30 * 60
 COMPONENT_TIMEOUTS_MS = {
     "auth": 15_000,
     "upload": 10_000,
@@ -33,6 +36,7 @@ QUEUE_WARNING_VISIBLE = 10
 QUEUE_CRITICAL_AGE_SECONDS = 30 * 60
 
 cloudwatch = None
+dynamodb = None
 
 
 def _cloudwatch_client():
@@ -40,6 +44,13 @@ def _cloudwatch_client():
     if cloudwatch is None:
         cloudwatch = boto3.client("cloudwatch")
     return cloudwatch
+
+
+def _dynamodb_resource():
+    global dynamodb
+    if dynamodb is None:
+        dynamodb = boto3.resource("dynamodb")
+    return dynamodb
 
 
 def _configured_names(
@@ -224,13 +235,86 @@ def _queue_result(queue: dict[str, Any], values: dict[str, float]) -> dict[str, 
     }
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def _query_jobs_by_status(table: Any, status: str) -> list[dict[str, Any]]:
+    items = []
+    query_kwargs = {
+        "IndexName": "StatusIndex",
+        "KeyConditionExpression": "#status = :status",
+        "ExpressionAttributeNames": {"#status": "status"},
+        "ExpressionAttributeValues": {":status": status},
+        "ProjectionExpression": "PK, SK, jobId, #status, createdAt, updatedAt, expiresAt",
+    }
+    response = table.query(**query_kwargs)
+    items.extend(response.get("Items", []))
+    while response.get("LastEvaluatedKey"):
+        response = table.query(
+            **query_kwargs, ExclusiveStartKey=response["LastEvaluatedKey"]
+        )
+        items.extend(response.get("Items", []))
+    return items
+
+
+def _job_result(table: Any, now: datetime) -> dict[str, Any]:
+    items_by_status = {
+        status: _query_jobs_by_status(table, status) for status in JOB_STATUSES
+    }
+    counts = {status: len(items) for status, items in items_by_status.items()}
+    stale_pending = 0
+    stale_running = 0
+    oldest_age_seconds: dict[str, int] = {}
+
+    for status, items in items_by_status.items():
+        ages = []
+        for item in items:
+            timestamp = _parse_timestamp(item.get("updatedAt")) or _parse_timestamp(
+                item.get("createdAt")
+            )
+            if timestamp:
+                ages.append(max(0, int((now - timestamp).total_seconds())))
+        if ages:
+            oldest_age_seconds[status] = max(ages)
+            if status in ("INITIALIZING", "PENDING"):
+                stale_pending += sum(age > PENDING_MAX_AGE_SECONDS for age in ages)
+            if status == "RUNNING":
+                stale_running += sum(age > RUNNING_MAX_AGE_SECONDS for age in ages)
+
+    if counts["FAILED"] > 0 or stale_running > 0:
+        status = "critical"
+    elif stale_pending > 0 or counts["PAUSED_QUOTA"] > 0:
+        status = "warning"
+    else:
+        status = "healthy"
+
+    return {
+        "status": status,
+        "metrics": {
+            "counts_by_status": counts,
+            "stale_pending_or_initializing": stale_pending,
+            "stale_running": stale_running,
+            "oldest_age_seconds_by_status": oldest_age_seconds,
+        },
+    }
+
+
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-    """Return a five-minute health summary for Lambdas and SQS queues."""
+    """Return a five-minute health summary for Lambdas, queues and jobs."""
     del context
     event = event or {}
     environment = os.getenv("ENVIRONMENT", event.get("environment", "develop"))
     components = _observed_components(environment)
     queues = _observed_queues(environment)
+    table_name = os.getenv("DYNAMODB_TABLE", f"extension-dynamo-table-{environment}")
 
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(minutes=WINDOW_MINUTES)
@@ -245,7 +329,10 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         _component_result(component, values) for component in components
     ]
     queue_results = [_queue_result(queue, values) for queue in queues]
-    statuses = [result["status"] for result in [*component_results, *queue_results]]
+    job_results = _job_result(_dynamodb_resource().Table(table_name), end_time)
+    statuses = [
+        result["status"] for result in [*component_results, *queue_results, job_results]
+    ]
     overall_status = max(statuses, key=STATUS_PRIORITY.get, default="healthy")
 
     return {
@@ -254,5 +341,6 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         "window_minutes": WINDOW_MINUTES,
         "components": component_results,
         "queues": queue_results,
+        "jobs": job_results,
         "observed_at": end_time.isoformat(),
     }

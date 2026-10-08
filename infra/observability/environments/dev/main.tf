@@ -1,3 +1,7 @@
+data "aws_dynamodb_table" "jobs" {
+  name = "extension-dynamo-table-${var.environment}"
+}
+
 data "archive_file" "observability_lambda" {
   type        = "zip"
   source_dir  = "${path.module}/../../../../observability/backend"
@@ -47,6 +51,15 @@ resource "aws_iam_role_policy" "observability_lambda" {
           "logs:PutLogEvents"
         ]
         Resource = "${aws_cloudwatch_log_group.observability.arn}:*"
+      },
+      {
+        Sid    = "ReadJobStatus"
+        Effect = "Allow"
+        Action = ["dynamodb:Query"]
+        Resource = [
+          data.aws_dynamodb_table.jobs.arn,
+          "${data.aws_dynamodb_table.jobs.arn}/index/StatusIndex"
+        ]
       }
     ]
   })
@@ -79,6 +92,7 @@ resource "aws_lambda_function" "observability" {
       ENVIRONMENT         = var.environment
       OBSERVED_COMPONENTS = join(",", var.observed_components)
       OBSERVED_QUEUES     = join(",", var.observed_queues)
+      DYNAMODB_TABLE      = data.aws_dynamodb_table.jobs.name
     }
   }
 
