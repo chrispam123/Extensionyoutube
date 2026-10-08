@@ -215,6 +215,22 @@ resource "aws_cognito_user_pool_domain" "observability" {
   user_pool_id = aws_cognito_user_pool.observability.id
 }
 
+resource "aws_cognito_identity_provider" "google" {
+  user_pool_id  = aws_cognito_user_pool.observability.id
+  provider_name = "Google"
+  provider_type = "Google"
+
+  provider_details = {
+    client_id        = var.google_client_id
+    client_secret    = var.google_client_secret
+    authorize_scopes = "openid email profile"
+  }
+
+  attribute_mapping = {
+    email = "email"
+  }
+}
+
 resource "aws_cognito_user_pool_client" "observability" {
   name         = "extension-observability-client-${var.environment}"
   user_pool_id = aws_cognito_user_pool.observability.id
@@ -224,10 +240,12 @@ resource "aws_cognito_user_pool_client" "observability" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = ["COGNITO"]
+  supported_identity_providers         = ["COGNITO", "Google"]
 
   callback_urls = var.cognito_callback_urls
   logout_urls   = var.cognito_logout_urls
+
+  depends_on = [aws_cognito_identity_provider.google]
 
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",

@@ -69,3 +69,15 @@ variable "cognito_logout_urls" {
   type        = list(string)
   default     = ["http://localhost:5173/"]
 }
+
+variable "google_client_id" {
+  description = "Client ID OAuth Web de Google para federación con Cognito."
+  type        = string
+  sensitive   = true
+}
+
+variable "google_client_secret" {
+  description = "Client Secret OAuth Web de Google para federación con Cognito."
+  type        = string
+  sensitive   = true
+}
