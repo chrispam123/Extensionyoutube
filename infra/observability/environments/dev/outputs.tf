@@ -17,3 +17,23 @@ output "observability_api_id" {
   description = "ID del API HTTP independiente de observabilidad."
   value       = aws_apigatewayv2_api.observability.id
 }
+
+output "cognito_user_pool_id" {
+  description = "ID del User Pool de Cognito para observabilidad."
+  value       = aws_cognito_user_pool.observability.id
+}
+
+output "cognito_user_pool_client_id" {
+  description = "ID del App Client público de Cognito para observabilidad."
+  value       = aws_cognito_user_pool_client.observability.id
+}
+
+output "cognito_domain" {
+  description = "Dominio hospedado de Cognito para el panel de observabilidad."
+  value       = aws_cognito_user_pool_domain.observability.domain
+}
+
+output "cognito_hosted_ui_base_url" {
+  description = "URL base del Hosted UI de Cognito."
+  value       = "https://${aws_cognito_user_pool_domain.observability.domain}.auth.${var.aws_region}.amazoncognito.com"
+}

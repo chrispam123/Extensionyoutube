@@ -182,3 +182,55 @@ resource "aws_lambda_permission" "observability_api" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.observability.execution_arn}/*/GET/observability"
 }
+
+resource "aws_cognito_user_pool" "observability" {
+  name                = "extension-observability-${var.environment}"
+  username_attributes = ["email"]
+  auto_verified_attributes = [
+    "email"
+  ]
+
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+  }
+
+  password_policy {
+    minimum_length                   = 12
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = true
+    require_uppercase                = true
+    temporary_password_validity_days = 7
+  }
+
+  tags = {
+    Project     = "Nocturne"
+    Environment = var.environment
+    Component   = "Observability"
+  }
+}
+
+resource "aws_cognito_user_pool_domain" "observability" {
+  domain       = var.cognito_domain_prefix
+  user_pool_id = aws_cognito_user_pool.observability.id
+}
+
+resource "aws_cognito_user_pool_client" "observability" {
+  name         = "extension-observability-client-${var.environment}"
+  user_pool_id = aws_cognito_user_pool.observability.id
+
+  generate_secret = false
+
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  supported_identity_providers         = ["COGNITO"]
+
+  callback_urls = var.cognito_callback_urls
+  logout_urls   = var.cognito_logout_urls
+
+  explicit_auth_flows = [
+    "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_USER_SRP_AUTH"
+  ]
+}

@@ -51,3 +51,21 @@ variable "eventbridge_target_function" {
   type        = string
   default     = "extension-resumer-develop"
 }
+
+variable "cognito_domain_prefix" {
+  description = "Prefijo global del dominio Cognito para el panel de observabilidad."
+  type        = string
+  default     = "nocturne-observability-dev-380894"
+}
+
+variable "cognito_callback_urls" {
+  description = "URI de callback autorizadas para el App Client de observabilidad."
+  type        = list(string)
+  default     = ["http://localhost:5173/auth/callback"]
+}
+
+variable "cognito_logout_urls" {
+  description = "URI de salida autorizadas para el App Client de observabilidad."
+  type        = list(string)
+  default     = ["http://localhost:5173/"]
+}
