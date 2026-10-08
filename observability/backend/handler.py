@@ -80,6 +80,10 @@ def _observed_queues(environment: str) -> list[dict[str, Any]]:
     return queues
 
 
+def _queue_metric_prefix(queue_id: str) -> str:
+    return queue_id.replace("-", "_")
+
+
 def _metric_queries(
     components: list[dict[str, Any]], queues: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -117,10 +121,11 @@ def _metric_queries(
 
     for item in queues:
         dimensions = [{"Name": "QueueName", "Value": item["queue_name"]}]
+        metric_prefix = _queue_metric_prefix(item["queue"])
         for metric_id, metric_name, statistic in queue_metrics:
             queries.append(
                 {
-                    "Id": f"sqs_{item['queue']}_{metric_id.replace('-', '_')}",
+                    "Id": f"sqs_{metric_prefix}_{metric_id.replace('-', '_')}",
                     "MetricStat": {
                         "Metric": {
                             "Namespace": QUEUE_METRIC_NAMESPACE,
@@ -192,7 +197,7 @@ def _component_result(
 
 
 def _queue_result(queue: dict[str, Any], values: dict[str, float]) -> dict[str, Any]:
-    prefix = f"sqs_{queue['queue']}"
+    prefix = f"sqs_{_queue_metric_prefix(queue['queue'])}"
     visible = values.get(f"{prefix}_visible", 0.0)
     not_visible = values.get(f"{prefix}_not_visible", 0.0)
     oldest_age_s = values.get(f"{prefix}_oldest_age_s", 0.0)
