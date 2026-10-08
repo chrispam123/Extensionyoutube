@@ -27,6 +27,9 @@ errores `4xx`/`5xx` y latencia p95.
 Para jobs `DONE` de tipo `EXPORT`, comprueba además que exista el objeto
 `exports/<user_id>/<job_id>.json` en S3.
 
+También verifica la regla EventBridge del resumer, su estado, target,
+invocaciones y fallos en una ventana de 90 minutos.
+
 Métricas iniciales:
 
 - `Errors`
