@@ -61,13 +61,19 @@ variable "cognito_domain_prefix" {
 variable "cognito_callback_urls" {
   description = "URI de callback autorizadas para el App Client de observabilidad."
   type        = list(string)
-  default     = ["http://localhost:5173/auth/callback"]
+  default = [
+    "http://localhost:5173/auth/callback",
+    "https://db7eekyeutb2h.cloudfront.net/auth/callback"
+  ]
 }
 
 variable "cognito_logout_urls" {
   description = "URI de salida autorizadas para el App Client de observabilidad."
   type        = list(string)
-  default     = ["http://localhost:5173/"]
+  default = [
+    "http://localhost:5173/",
+    "https://db7eekyeutb2h.cloudfront.net/"
+  ]
 }
 
 variable "google_client_id" {
