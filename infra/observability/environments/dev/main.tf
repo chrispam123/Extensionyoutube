@@ -137,3 +137,48 @@ resource "aws_lambda_function" "observability" {
     Component   = "Observability"
   }
 }
+
+resource "aws_apigatewayv2_api" "observability" {
+  name          = "extension-observability-api-${var.environment}"
+  protocol_type = "HTTP"
+
+  tags = {
+    Project     = "Nocturne"
+    Environment = var.environment
+    Component   = "Observability"
+  }
+}
+
+resource "aws_apigatewayv2_stage" "observability" {
+  api_id      = aws_apigatewayv2_api.observability.id
+  name        = var.environment
+  auto_deploy = true
+
+  tags = {
+    Project     = "Nocturne"
+    Environment = var.environment
+    Component   = "Observability"
+  }
+}
+
+resource "aws_apigatewayv2_integration" "observability" {
+  api_id                 = aws_apigatewayv2_api.observability.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.observability.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "observability" {
+  api_id             = aws_apigatewayv2_api.observability.id
+  route_key          = "GET /observability"
+  target             = "integrations/${aws_apigatewayv2_integration.observability.id}"
+  authorization_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "observability_api" {
+  statement_id  = "AllowExecutionFromObservabilityAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.observability.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.observability.execution_arn}/*/GET/observability"
+}
