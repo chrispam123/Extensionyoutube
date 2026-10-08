@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 
+from botocore.exceptions import ClientError
+
 from observability.backend import handler
 
 DEFAULT_VALUES = {
@@ -87,6 +89,22 @@ class FakeDynamoDB:
         return self.table
 
 
+class FakeS3:
+    exceptions = type("Exceptions", (), {"ClientError": ClientError})
+
+    def __init__(self, missing_keys=None):
+        self.missing_keys = missing_keys or set()
+
+    def head_object(self, *, Bucket, Key):
+        assert Bucket == "extension-s3-uploads-develop"
+        if Key in self.missing_keys:
+            raise ClientError(
+                {"Error": {"Code": "404"}},
+                "HeadObject",
+            )
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
+
 def _values(**overrides):
     values = DEFAULT_VALUES.copy()
     values.update(overrides)
@@ -101,18 +119,24 @@ def _job(status, age_minutes):
         "PK": "USER#test",
         "SK": f"JOB#{status}",
         "jobId": status,
+        "userId": "user-test",
+        "type": "EXPORT",
         "status": status,
         "createdAt": timestamp,
         "updatedAt": timestamp,
     }
 
 
-def _patch_clients(monkeypatch, values=None, items_by_status=None):
+def _patch_clients(
+    monkeypatch, values=None, items_by_status=None, missing_s3_keys=None
+):
     monkeypatch.setenv("ENVIRONMENT", "develop")
     monkeypatch.setenv("API_GATEWAY_ID", "api-test")
     monkeypatch.setenv("API_GATEWAY_STAGE", "develop")
+    monkeypatch.setenv("S3_BUCKET", "extension-s3-uploads-develop")
     monkeypatch.setattr(handler, "cloudwatch", FakeCloudWatch(values or _values()))
     monkeypatch.setattr(handler, "dynamodb", FakeDynamoDB(items_by_status))
+    monkeypatch.setattr(handler, "s3", FakeS3(missing_s3_keys))
 
 
 def test_all_lambdas_queues_and_jobs_are_healthy(monkeypatch):
@@ -197,6 +221,30 @@ def test_stale_running_job_is_critical(monkeypatch):
 
     assert result["status"] == "critical"
     assert result["jobs"]["metrics"]["stale_running"] == 1
+
+
+def test_done_export_with_s3_object_is_healthy(monkeypatch):
+    _patch_clients(monkeypatch, items_by_status={"DONE": [_job("DONE", 2)]})
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "healthy"
+    assert result["jobs"]["metrics"]["done_exports_checked"] == 1
+    assert result["jobs"]["metrics"]["done_exports_missing"] == 0
+
+
+def test_done_export_without_s3_object_is_critical(monkeypatch):
+    _patch_clients(
+        monkeypatch,
+        items_by_status={"DONE": [_job("DONE", 2)]},
+        missing_s3_keys={"exports/user-test/DONE.json"},
+    )
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "critical"
+    assert result["jobs"]["status"] == "critical"
+    assert result["jobs"]["metrics"]["done_exports_missing"] == 1
 
 
 def test_components_and_queues_can_be_restricted(monkeypatch):
