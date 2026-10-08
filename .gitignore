@@ -58,3 +58,8 @@ frontend/.env.production.local
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
+
+observability/frontend/node_modules/
+observability/frontend/dist/
+observability/frontend/.env.local
+observability/frontend/.env.*.local
