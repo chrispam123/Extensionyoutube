@@ -39,3 +39,15 @@ variable "api_gateway_id" {
   type        = string
   default     = "pugu65me5k"
 }
+
+variable "eventbridge_rule_name" {
+  description = "Regla EventBridge del resumer que se observará."
+  type        = string
+  default     = "extension-resumer-cron-develop"
+}
+
+variable "eventbridge_target_function" {
+  description = "Lambda target de la regla EventBridge."
+  type        = string
+  default     = "extension-resumer-develop"
+}

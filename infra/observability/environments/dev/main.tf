@@ -10,6 +10,8 @@ data "aws_s3_bucket" "uploads" {
   bucket = "extension-s3-uploads-${var.environment}"
 }
 
+data "aws_caller_identity" "current" {}
+
 data "archive_file" "observability_lambda" {
   type        = "zip"
   source_dir  = "${path.module}/../../../../observability/backend"
@@ -74,6 +76,15 @@ resource "aws_iam_role_policy" "observability_lambda" {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
         Resource = "${data.aws_s3_bucket.uploads.arn}/exports/*"
+      },
+      {
+        Sid    = "ReadEventBridgeRule"
+        Effect = "Allow"
+        Action = [
+          "events:DescribeRule",
+          "events:ListTargetsByRule"
+        ]
+        Resource = "arn:aws:events:${var.aws_region}:${data.aws_caller_identity.current.account_id}:rule/${var.eventbridge_rule_name}"
       }
     ]
   })
@@ -103,13 +114,15 @@ resource "aws_lambda_function" "observability" {
 
   environment {
     variables = {
-      ENVIRONMENT         = var.environment
-      OBSERVED_COMPONENTS = join(",", var.observed_components)
-      OBSERVED_QUEUES     = join(",", var.observed_queues)
-      DYNAMODB_TABLE      = data.aws_dynamodb_table.jobs.name
-      API_GATEWAY_ID      = data.aws_apigatewayv2_api.http.id
-      API_GATEWAY_STAGE   = var.api_gateway_stage
-      S3_BUCKET           = data.aws_s3_bucket.uploads.id
+      ENVIRONMENT                 = var.environment
+      OBSERVED_COMPONENTS         = join(",", var.observed_components)
+      OBSERVED_QUEUES             = join(",", var.observed_queues)
+      DYNAMODB_TABLE              = data.aws_dynamodb_table.jobs.name
+      API_GATEWAY_ID              = data.aws_apigatewayv2_api.http.id
+      API_GATEWAY_STAGE           = var.api_gateway_stage
+      S3_BUCKET                   = data.aws_s3_bucket.uploads.id
+      EVENTBRIDGE_RULE_NAME       = var.eventbridge_rule_name
+      EVENTBRIDGE_TARGET_FUNCTION = var.eventbridge_target_function
     }
   }
 

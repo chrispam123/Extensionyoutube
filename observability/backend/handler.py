@@ -11,6 +11,7 @@ import boto3
 METRIC_NAMESPACE = "AWS/Lambda"
 QUEUE_METRIC_NAMESPACE = "AWS/SQS"
 API_GATEWAY_METRIC_NAMESPACE = "AWS/ApiGateway"
+EVENTBRIDGE_METRIC_NAMESPACE = "AWS/Events"
 WINDOW_MINUTES = 5
 DEFAULT_TIMEOUT_MS = 60_000
 DEFAULT_COMPONENTS = ("auth", "upload", "dispatcher", "worker", "status", "resumer")
@@ -35,6 +36,7 @@ QUEUE_DEFINITIONS = {
 STATUS_PRIORITY = {"healthy": 0, "warning": 1, "critical": 2}
 QUEUE_WARNING_VISIBLE = 10
 QUEUE_CRITICAL_AGE_SECONDS = 30 * 60
+EVENTBRIDGE_WINDOW_MINUTES = 90
 API_MIN_REQUESTS_FOR_ERROR_RATE = 10
 API_CRITICAL_5XX_RATE = 1.0
 API_WARNING_LATENCY_MS = 2_000
@@ -42,6 +44,7 @@ API_WARNING_LATENCY_MS = 2_000
 cloudwatch = None
 dynamodb = None
 s3 = None
+events = None
 
 
 def _cloudwatch_client():
@@ -63,6 +66,13 @@ def _s3_client():
     if s3 is None:
         s3 = boto3.client("s3")
     return s3
+
+
+def _events_client():
+    global events
+    if events is None:
+        events = boto3.client("events")
+    return events
 
 
 def _configured_names(
@@ -110,6 +120,18 @@ def _observed_api_gateway(environment: str) -> dict[str, str] | None:
     return {
         "api_id": api_id,
         "stage": os.getenv("API_GATEWAY_STAGE", environment),
+    }
+
+
+def _observed_eventbridge(environment: str) -> dict[str, str] | None:
+    rule_name = os.getenv("EVENTBRIDGE_RULE_NAME")
+    if not rule_name:
+        return None
+    return {
+        "rule_name": rule_name,
+        "target_function": os.getenv(
+            "EVENTBRIDGE_TARGET_FUNCTION", f"extension-resumer-{environment}"
+        ),
     }
 
 
@@ -211,6 +233,37 @@ def _metric_values(response: dict[str, Any]) -> dict[str, float]:
         data_points = result.get("Values", [])
         values[result["Id"]] = float(data_points[0]) if data_points else 0.0
     return values
+
+
+def _metric_totals(response: dict[str, Any]) -> dict[str, float]:
+    return {
+        result["Id"]: sum(float(value) for value in result.get("Values", []))
+        for result in response.get("MetricDataResults", [])
+    }
+
+
+def _eventbridge_metric_queries(rule_name: str) -> list[dict[str, Any]]:
+    dimensions = [{"Name": "RuleName", "Value": rule_name}]
+    metrics = [
+        ("invocations", "Invocations"),
+        ("failed_invocations", "FailedInvocations"),
+    ]
+    return [
+        {
+            "Id": f"eventbridge_{metric_id}",
+            "MetricStat": {
+                "Metric": {
+                    "Namespace": EVENTBRIDGE_METRIC_NAMESPACE,
+                    "MetricName": metric_name,
+                    "Dimensions": dimensions,
+                },
+                "Period": WINDOW_MINUTES * 60,
+                "Stat": "Sum",
+            },
+            "ReturnData": True,
+        }
+        for metric_id, metric_name in metrics
+    ]
 
 
 def _lambda_status(
@@ -416,6 +469,50 @@ def _api_gateway_result(
     }
 
 
+def _eventbridge_result(
+    eventbridge: dict[str, str] | None,
+    events_client: Any,
+    metric_values: dict[str, float],
+) -> dict[str, Any] | None:
+    if not eventbridge:
+        return None
+
+    rule_name = eventbridge["rule_name"]
+    rule = events_client.describe_rule(Name=rule_name)
+    targets = events_client.list_targets_by_rule(Rule=rule_name).get("Targets", [])
+    target_suffix = f":function:{eventbridge['target_function']}"
+    target_configured = any(
+        str(target.get("Arn", "")).endswith(target_suffix) for target in targets
+    )
+    invocations = metric_values.get("eventbridge_invocations", 0.0)
+    failed_invocations = metric_values.get("eventbridge_failed_invocations", 0.0)
+    schedule_ok = rule.get("ScheduleExpression") == "rate(1 hour)"
+    enabled = rule.get("State") == "ENABLED"
+
+    if not enabled or not schedule_ok or not target_configured:
+        status = "critical"
+    elif failed_invocations > 0:
+        status = "critical"
+    elif invocations == 0:
+        status = "warning"
+    else:
+        status = "healthy"
+
+    return {
+        "rule_name": rule_name,
+        "state": rule.get("State"),
+        "schedule_expression": rule.get("ScheduleExpression"),
+        "target_function": eventbridge["target_function"],
+        "target_configured": target_configured,
+        "status": status,
+        "metrics": {
+            "window_minutes": EVENTBRIDGE_WINDOW_MINUTES,
+            "invocations": int(invocations),
+            "failed_invocations": int(failed_invocations),
+        },
+    }
+
+
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     """Return a five-minute health summary for Lambdas, queues and jobs."""
     del context
@@ -424,6 +521,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     components = _observed_components(environment)
     queues = _observed_queues(environment)
     api_gateway = _observed_api_gateway(environment)
+    eventbridge = _observed_eventbridge(environment)
     table_name = os.getenv("DYNAMODB_TABLE", f"extension-dynamo-table-{environment}")
     bucket_name = os.getenv("S3_BUCKET")
 
@@ -441,6 +539,22 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     ]
     queue_results = [_queue_result(queue, values) for queue in queues]
     api_result = _api_gateway_result(api_gateway, values)
+    eventbridge_values = {}
+    if eventbridge:
+        event_end_time = end_time
+        event_start_time = event_end_time - timedelta(
+            minutes=EVENTBRIDGE_WINDOW_MINUTES
+        )
+        event_response = _cloudwatch_client().get_metric_data(
+            MetricDataQueries=_eventbridge_metric_queries(eventbridge["rule_name"]),
+            StartTime=event_start_time,
+            EndTime=event_end_time,
+            ScanBy="TimestampDescending",
+        )
+        eventbridge_values = _metric_totals(event_response)
+    eventbridge_result = _eventbridge_result(
+        eventbridge, _events_client() if eventbridge else None, eventbridge_values
+    )
     job_results = _job_result(
         _dynamodb_resource().Table(table_name),
         end_time,
@@ -450,6 +564,8 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     status_results = [*component_results, *queue_results, job_results]
     if api_result:
         status_results.append(api_result)
+    if eventbridge_result:
+        status_results.append(eventbridge_result)
     statuses = [result["status"] for result in status_results]
     overall_status = max(statuses, key=STATUS_PRIORITY.get, default="healthy")
 
@@ -460,6 +576,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         "components": component_results,
         "queues": queue_results,
         "api_gateway": api_result,
+        "eventbridge": eventbridge_result,
         "jobs": job_results,
         "observed_at": end_time.isoformat(),
     }

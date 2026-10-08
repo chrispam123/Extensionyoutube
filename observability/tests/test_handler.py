@@ -18,6 +18,9 @@ DEFAULT_VALUES.update(
     }
 )
 DEFAULT_VALUES.update(
+    {"eventbridge_invocations": 1, "eventbridge_failed_invocations": 0}
+)
+DEFAULT_VALUES.update(
     {
         "api_requests": 0,
         "api_errors_5xx": 0,
@@ -32,35 +35,41 @@ class FakeCloudWatch:
         self.values = values
 
     def get_metric_data(self, **kwargs):
-        configured_components = os.getenv("OBSERVED_COMPONENTS")
-        configured_queues = os.getenv("OBSERVED_QUEUES")
-        component_count = len(
-            [
-                item
-                for item in (
-                    configured_components.split(",")
-                    if configured_components
-                    else handler.DEFAULT_COMPONENTS
-                )
-                if item.strip()
-            ]
-        )
-        queue_count = len(
-            [
-                item
-                for item in (
-                    configured_queues.split(",")
-                    if configured_queues
-                    else handler.DEFAULT_QUEUES
-                )
-                if item.strip()
-            ]
-        )
-        api_query_count = 4 if os.getenv("API_GATEWAY_ID") else 0
-        assert (
-            len(kwargs["MetricDataQueries"])
-            == component_count * 4 + queue_count * 3 + api_query_count
-        )
+        if any(
+            query["Id"].startswith("eventbridge_")
+            for query in kwargs["MetricDataQueries"]
+        ):
+            assert len(kwargs["MetricDataQueries"]) == 2
+        else:
+            configured_components = os.getenv("OBSERVED_COMPONENTS")
+            configured_queues = os.getenv("OBSERVED_QUEUES")
+            component_count = len(
+                [
+                    item
+                    for item in (
+                        configured_components.split(",")
+                        if configured_components
+                        else handler.DEFAULT_COMPONENTS
+                    )
+                    if item.strip()
+                ]
+            )
+            queue_count = len(
+                [
+                    item
+                    for item in (
+                        configured_queues.split(",")
+                        if configured_queues
+                        else handler.DEFAULT_QUEUES
+                    )
+                    if item.strip()
+                ]
+            )
+            api_query_count = 4 if os.getenv("API_GATEWAY_ID") else 0
+            assert (
+                len(kwargs["MetricDataQueries"])
+                == component_count * 4 + queue_count * 3 + api_query_count
+            )
         assert isinstance(kwargs["StartTime"], datetime)
         assert isinstance(kwargs["EndTime"], datetime)
         return {
@@ -87,6 +96,30 @@ class FakeDynamoDB:
     def Table(self, table_name):
         assert table_name == "extension-dynamo-table-develop"
         return self.table
+
+
+class FakeEvents:
+    def __init__(
+        self,
+        state="ENABLED",
+        schedule="rate(1 hour)",
+        target_function="extension-resumer-develop",
+    ):
+        self.state = state
+        self.schedule = schedule
+        self.target_function = target_function
+
+    def describe_rule(self, **kwargs):
+        assert kwargs["Name"] == "extension-resumer-cron-develop"
+        return {"State": self.state, "ScheduleExpression": self.schedule}
+
+    def list_targets_by_rule(self, **kwargs):
+        assert kwargs["Rule"] == "extension-resumer-cron-develop"
+        return {
+            "Targets": [
+                {"Arn": f"arn:aws:lambda:us-east-1:123:function:{self.target_function}"}
+            ]
+        }
 
 
 class FakeS3:
@@ -128,15 +161,22 @@ def _job(status, age_minutes):
 
 
 def _patch_clients(
-    monkeypatch, values=None, items_by_status=None, missing_s3_keys=None
+    monkeypatch,
+    values=None,
+    items_by_status=None,
+    missing_s3_keys=None,
+    events_client=None,
 ):
     monkeypatch.setenv("ENVIRONMENT", "develop")
     monkeypatch.setenv("API_GATEWAY_ID", "api-test")
     monkeypatch.setenv("API_GATEWAY_STAGE", "develop")
     monkeypatch.setenv("S3_BUCKET", "extension-s3-uploads-develop")
+    monkeypatch.setenv("EVENTBRIDGE_RULE_NAME", "extension-resumer-cron-develop")
+    monkeypatch.setenv("EVENTBRIDGE_TARGET_FUNCTION", "extension-resumer-develop")
     monkeypatch.setattr(handler, "cloudwatch", FakeCloudWatch(values or _values()))
     monkeypatch.setattr(handler, "dynamodb", FakeDynamoDB(items_by_status))
     monkeypatch.setattr(handler, "s3", FakeS3(missing_s3_keys))
+    monkeypatch.setattr(handler, "events", events_client or FakeEvents())
 
 
 def test_all_lambdas_queues_and_jobs_are_healthy(monkeypatch):
@@ -148,6 +188,7 @@ def test_all_lambdas_queues_and_jobs_are_healthy(monkeypatch):
     assert len(result["components"]) == 6
     assert len(result["queues"]) == 4
     assert result["jobs"]["metrics"]["counts_by_status"]["FAILED"] == 0
+    assert result["eventbridge"]["status"] == "healthy"
 
 
 def test_worker_error_rate_is_warning(monkeypatch):
@@ -192,6 +233,34 @@ def test_api_gateway_latency_is_warning(monkeypatch):
 
     assert result["status"] == "warning"
     assert result["api_gateway"]["status"] == "warning"
+
+
+def test_eventbridge_without_recent_invocation_is_warning(monkeypatch):
+    _patch_clients(monkeypatch, _values(eventbridge_invocations=0))
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "warning"
+    assert result["eventbridge"]["status"] == "warning"
+    assert result["eventbridge"]["metrics"]["window_minutes"] == 90
+
+
+def test_eventbridge_failed_invocation_is_critical(monkeypatch):
+    _patch_clients(monkeypatch, _values(eventbridge_failed_invocations=1))
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "critical"
+    assert result["eventbridge"]["status"] == "critical"
+
+
+def test_disabled_eventbridge_rule_is_critical(monkeypatch):
+    _patch_clients(monkeypatch, events_client=FakeEvents(state="DISABLED"))
+
+    result = handler.lambda_handler({}, None)
+
+    assert result["status"] == "critical"
+    assert result["eventbridge"]["status"] == "critical"
 
 
 def test_failed_job_is_critical(monkeypatch):

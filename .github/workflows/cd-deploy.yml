@@ -138,6 +138,8 @@ jobs:
           TF_VAR_observed_queues: '["work", "dlq", "ingestion", "ingestion-dlq"]'
           TF_VAR_api_gateway_stage: "develop"
           TF_VAR_api_gateway_id: "pugu65me5k"
+          TF_VAR_eventbridge_rule_name: "extension-resumer-cron-develop"
+          TF_VAR_eventbridge_target_function: "extension-resumer-develop"
           TF_VAR_log_retention_days: "14"
         run: |
           mkdir -p ../../../../dist
