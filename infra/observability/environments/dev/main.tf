@@ -6,6 +6,10 @@ data "aws_apigatewayv2_api" "http" {
   api_id = var.api_gateway_id
 }
 
+data "aws_s3_bucket" "uploads" {
+  bucket = "extension-s3-uploads-${var.environment}"
+}
+
 data "archive_file" "observability_lambda" {
   type        = "zip"
   source_dir  = "${path.module}/../../../../observability/backend"
@@ -64,6 +68,12 @@ resource "aws_iam_role_policy" "observability_lambda" {
           data.aws_dynamodb_table.jobs.arn,
           "${data.aws_dynamodb_table.jobs.arn}/index/StatusIndex"
         ]
+      },
+      {
+        Sid      = "ReadExportObjects"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${data.aws_s3_bucket.uploads.arn}/exports/*"
       }
     ]
   })
@@ -99,6 +109,7 @@ resource "aws_lambda_function" "observability" {
       DYNAMODB_TABLE      = data.aws_dynamodb_table.jobs.name
       API_GATEWAY_ID      = data.aws_apigatewayv2_api.http.id
       API_GATEWAY_STAGE   = var.api_gateway_stage
+      S3_BUCKET           = data.aws_s3_bucket.uploads.id
     }
   }
 

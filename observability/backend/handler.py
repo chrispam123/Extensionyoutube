@@ -41,6 +41,7 @@ API_WARNING_LATENCY_MS = 2_000
 
 cloudwatch = None
 dynamodb = None
+s3 = None
 
 
 def _cloudwatch_client():
@@ -55,6 +56,13 @@ def _dynamodb_resource():
     if dynamodb is None:
         dynamodb = boto3.resource("dynamodb")
     return dynamodb
+
+
+def _s3_client():
+    global s3
+    if s3 is None:
+        s3 = boto3.client("s3")
+    return s3
 
 
 def _configured_names(
@@ -295,9 +303,9 @@ def _query_jobs_by_status(table: Any, status: str) -> list[dict[str, Any]]:
     query_kwargs = {
         "IndexName": "StatusIndex",
         "KeyConditionExpression": "#status = :status",
-        "ExpressionAttributeNames": {"#status": "status"},
+        "ExpressionAttributeNames": {"#status": "status", "#type": "type"},
         "ExpressionAttributeValues": {":status": status},
-        "ProjectionExpression": "PK, SK, jobId, #status, createdAt, updatedAt, expiresAt",
+        "ProjectionExpression": "PK, SK, jobId, userId, #status, #type, createdAt, updatedAt, expiresAt",
     }
     response = table.query(**query_kwargs)
     items.extend(response.get("Items", []))
@@ -309,13 +317,17 @@ def _query_jobs_by_status(table: Any, status: str) -> list[dict[str, Any]]:
     return items
 
 
-def _job_result(table: Any, now: datetime) -> dict[str, Any]:
+def _job_result(
+    table: Any, now: datetime, s3_client: Any | None, bucket_name: str | None
+) -> dict[str, Any]:
     items_by_status = {
         status: _query_jobs_by_status(table, status) for status in JOB_STATUSES
     }
     counts = {status: len(items) for status, items in items_by_status.items()}
     stale_pending = 0
     stale_running = 0
+    done_exports_checked = 0
+    done_exports_missing = 0
     oldest_age_seconds: dict[str, int] = {}
 
     for status, items in items_by_status.items():
@@ -333,7 +345,22 @@ def _job_result(table: Any, now: datetime) -> dict[str, Any]:
             if status == "RUNNING":
                 stale_running += sum(age > RUNNING_MAX_AGE_SECONDS for age in ages)
 
-    if counts["FAILED"] > 0 or stale_running > 0:
+    if s3_client and bucket_name:
+        for item in items_by_status["DONE"]:
+            if item.get("type", "EXPORT") != "EXPORT":
+                continue
+            done_exports_checked += 1
+            key = f"exports/{item['userId']}/{item['jobId']}.json"
+            try:
+                s3_client.head_object(Bucket=bucket_name, Key=key)
+            except s3_client.exceptions.ClientError as error:
+                error_code = error.response.get("Error", {}).get("Code")
+                if error_code in ("404", "NoSuchKey", "NotFound"):
+                    done_exports_missing += 1
+                else:
+                    raise
+
+    if counts["FAILED"] > 0 or stale_running > 0 or done_exports_missing > 0:
         status = "critical"
     elif stale_pending > 0 or counts["PAUSED_QUOTA"] > 0:
         status = "warning"
@@ -346,6 +373,8 @@ def _job_result(table: Any, now: datetime) -> dict[str, Any]:
             "counts_by_status": counts,
             "stale_pending_or_initializing": stale_pending,
             "stale_running": stale_running,
+            "done_exports_checked": done_exports_checked,
+            "done_exports_missing": done_exports_missing,
             "oldest_age_seconds_by_status": oldest_age_seconds,
         },
     }
@@ -396,6 +425,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     queues = _observed_queues(environment)
     api_gateway = _observed_api_gateway(environment)
     table_name = os.getenv("DYNAMODB_TABLE", f"extension-dynamo-table-{environment}")
+    bucket_name = os.getenv("S3_BUCKET")
 
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(minutes=WINDOW_MINUTES)
@@ -411,7 +441,12 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     ]
     queue_results = [_queue_result(queue, values) for queue in queues]
     api_result = _api_gateway_result(api_gateway, values)
-    job_results = _job_result(_dynamodb_resource().Table(table_name), end_time)
+    job_results = _job_result(
+        _dynamodb_resource().Table(table_name),
+        end_time,
+        _s3_client() if bucket_name else None,
+        bucket_name,
+    )
     status_results = [*component_results, *queue_results, job_results]
     if api_result:
         status_results.append(api_result)

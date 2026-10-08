@@ -24,6 +24,9 @@ recuentos por estado y antigüedad de jobs pendientes o ejecutándose.
 También consulta el HTTP API Gateway del entorno para observar peticiones,
 errores `4xx`/`5xx` y latencia p95.
 
+Para jobs `DONE` de tipo `EXPORT`, comprueba además que exista el objeto
+`exports/<user_id>/<job_id>.json` en S3.
+
 Métricas iniciales:
 
 - `Errors`
