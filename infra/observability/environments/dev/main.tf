@@ -143,6 +143,16 @@ resource "aws_apigatewayv2_api" "observability" {
   name          = "extension-observability-api-${var.environment}"
   protocol_type = "HTTP"
 
+  cors_configuration {
+    allow_headers = ["authorization", "content-type"]
+    allow_methods = ["GET", "OPTIONS"]
+    allow_origins = [
+      "https://db7eekyeutb2h.cloudfront.net",
+      "http://localhost:5173"
+    ]
+    max_age = 300
+  }
+
   tags = {
     Project     = "Nocturne"
     Environment = var.environment
