@@ -114,15 +114,16 @@ resource "aws_lambda_function" "observability" {
 
   environment {
     variables = {
-      ENVIRONMENT                 = var.environment
-      OBSERVED_COMPONENTS         = join(",", var.observed_components)
-      OBSERVED_QUEUES             = join(",", var.observed_queues)
-      DYNAMODB_TABLE              = data.aws_dynamodb_table.jobs.name
-      API_GATEWAY_ID              = data.aws_apigatewayv2_api.http.id
-      API_GATEWAY_STAGE           = var.api_gateway_stage
-      S3_BUCKET                   = data.aws_s3_bucket.uploads.id
-      EVENTBRIDGE_RULE_NAME       = var.eventbridge_rule_name
-      EVENTBRIDGE_TARGET_FUNCTION = var.eventbridge_target_function
+      ENVIRONMENT                  = var.environment
+      OBSERVED_COMPONENTS          = join(",", var.observed_components)
+      OBSERVED_QUEUES              = join(",", var.observed_queues)
+      DYNAMODB_TABLE               = data.aws_dynamodb_table.jobs.name
+      API_GATEWAY_ID               = data.aws_apigatewayv2_api.http.id
+      API_GATEWAY_STAGE            = var.api_gateway_stage
+      S3_BUCKET                    = data.aws_s3_bucket.uploads.id
+      EVENTBRIDGE_RULE_NAME        = var.eventbridge_rule_name
+      EVENTBRIDGE_TARGET_FUNCTION  = var.eventbridge_target_function
+      OBSERVABILITY_REQUIRED_GROUP = var.observability_required_group
     }
   }
 
@@ -172,7 +173,20 @@ resource "aws_apigatewayv2_route" "observability" {
   api_id             = aws_apigatewayv2_api.observability.id
   route_key          = "GET /observability"
   target             = "integrations/${aws_apigatewayv2_integration.observability.id}"
-  authorization_type = "AWS_IAM"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.observability.id
+}
+
+resource "aws_apigatewayv2_authorizer" "observability" {
+  api_id           = aws_apigatewayv2_api.observability.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "extension-observability-cognito-${var.environment}"
+
+  jwt_configuration {
+    audience = [aws_cognito_user_pool_client.observability.id]
+    issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.observability.id}"
+  }
 }
 
 resource "aws_lambda_permission" "observability_api" {
@@ -213,6 +227,13 @@ resource "aws_cognito_user_pool" "observability" {
 resource "aws_cognito_user_pool_domain" "observability" {
   domain       = var.cognito_domain_prefix
   user_pool_id = aws_cognito_user_pool.observability.id
+}
+
+resource "aws_cognito_user_group" "observability_readonly" {
+  name         = var.observability_required_group
+  user_pool_id = aws_cognito_user_pool.observability.id
+  description  = "Read-only access to the Nocturne observability panel."
+  precedence   = 1
 }
 
 resource "aws_cognito_identity_provider" "google" {

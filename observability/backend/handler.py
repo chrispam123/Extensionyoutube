@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -45,6 +46,47 @@ cloudwatch = None
 dynamodb = None
 s3 = None
 events = None
+REQUIRED_GROUP = "observability-readonly"
+
+
+def _api_gateway_request(event: dict[str, Any]) -> bool:
+    request_context = event.get("requestContext")
+    return isinstance(request_context, dict) and isinstance(
+        request_context.get("http"), dict
+    )
+
+
+def _authorized_for_observability(event: dict[str, Any]) -> bool:
+    if not _api_gateway_request(event):
+        return True
+
+    request_context = event.get("requestContext", {})
+    authorizer = request_context.get("authorizer", {})
+    jwt = authorizer.get("jwt", {})
+    claims = jwt.get("claims", {})
+    raw_groups = claims.get("cognito:groups", "")
+    if isinstance(raw_groups, str):
+        try:
+            groups = json.loads(raw_groups)
+            if not isinstance(groups, list):
+                groups = raw_groups.replace(",", " ").split()
+        except json.JSONDecodeError:
+            groups = raw_groups.replace(",", " ").split()
+    elif isinstance(raw_groups, list):
+        groups = raw_groups
+    else:
+        groups = []
+
+    required_group = os.getenv("OBSERVABILITY_REQUIRED_GROUP", REQUIRED_GROUP)
+    return required_group in groups
+
+
+def _forbidden_response() -> dict[str, Any]:
+    return {
+        "statusCode": 403,
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps({"message": "Observability access is not authorized."}),
+    }
 
 
 def _cloudwatch_client():
@@ -517,6 +559,8 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     """Return a five-minute health summary for Lambdas, queues and jobs."""
     del context
     event = event or {}
+    if not _authorized_for_observability(event):
+        return _forbidden_response()
     environment = os.getenv("ENVIRONMENT", event.get("environment", "develop"))
     components = _observed_components(environment)
     queues = _observed_queues(environment)

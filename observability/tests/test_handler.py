@@ -191,6 +191,35 @@ def test_all_lambdas_queues_and_jobs_are_healthy(monkeypatch):
     assert result["eventbridge"]["status"] == "healthy"
 
 
+def test_api_gateway_request_without_required_group_is_forbidden():
+    event = {
+        "requestContext": {
+            "http": {"method": "GET", "path": "/observability"},
+            "authorizer": {"jwt": {"claims": {"cognito:groups": "[]"}}},
+        }
+    }
+
+    result = handler.lambda_handler(event, None)
+
+    assert result["statusCode"] == 403
+
+
+def test_api_gateway_request_with_required_group_is_allowed(monkeypatch):
+    _patch_clients(monkeypatch)
+    event = {
+        "requestContext": {
+            "http": {"method": "GET", "path": "/observability"},
+            "authorizer": {
+                "jwt": {"claims": {"cognito:groups": '["observability-readonly"]'}}
+            },
+        }
+    }
+
+    result = handler.lambda_handler(event, None)
+
+    assert result["status"] == "healthy"
+
+
 def test_worker_error_rate_is_warning(monkeypatch):
     _patch_clients(
         monkeypatch,
