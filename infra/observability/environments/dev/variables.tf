@@ -87,3 +87,9 @@ variable "google_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "observability_required_group" {
+  description = "Grupo Cognito requerido para consultar el panel de observabilidad."
+  type        = string
+  default     = "observability-readonly"
+}
