@@ -14,6 +14,7 @@ const userManager = new UserManager({
 })
 
 const REQUIRED_GROUP = 'observability-readonly'
+const SELECT_ACCOUNT_KEY = 'observability.select_google_account'
 
 const decodeAccessToken = (accessToken: string): Record<string, unknown> | null => {
   try {
@@ -32,10 +33,15 @@ export const hasRequiredGroup = (accessToken: string): boolean => {
   return Array.isArray(groups) && groups.includes(REQUIRED_GROUP)
 }
 
-export const signIn = (selectAccount = false): Promise<void> =>
-  userManager.signinRedirect(
-    selectAccount ? { extraQueryParams: { prompt: 'select_account' } } : undefined,
+export const signIn = (selectAccount = false): Promise<void> => {
+  const shouldSelectAccount =
+    selectAccount || window.sessionStorage.getItem(SELECT_ACCOUNT_KEY) === 'true'
+  window.sessionStorage.removeItem(SELECT_ACCOUNT_KEY)
+
+  return userManager.signinRedirect(
+    shouldSelectAccount ? { extraQueryParams: { prompt: 'select_account' } } : undefined,
   )
+}
 
 export const completeSignIn = (): Promise<User> => userManager.signinRedirectCallback()
 
@@ -46,6 +52,11 @@ export const signOut = (): Promise<void> =>
       logout_uri: environment.logoutUri,
     },
   })
+
+export const signOutAndChooseAccount = async (): Promise<void> => {
+  window.sessionStorage.setItem(SELECT_ACCOUNT_KEY, 'true')
+  await signOut()
+}
 
 export const removeCurrentUser = (): Promise<void> => userManager.removeUser()
 
