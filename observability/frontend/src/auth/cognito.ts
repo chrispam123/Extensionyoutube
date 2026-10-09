@@ -9,6 +9,8 @@ const userManager = new UserManager({
   response_type: 'code',
   scope: 'openid email profile',
   userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+  revokeTokensOnSignout: true,
+  revokeTokenTypes: ['access_token', 'refresh_token'],
 })
 
 export const signIn = (): Promise<void> => userManager.signinRedirect()
