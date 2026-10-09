@@ -17,6 +17,12 @@ export const signIn = (): Promise<void> => userManager.signinRedirect()
 
 export const completeSignIn = (): Promise<User> => userManager.signinRedirectCallback()
 
-export const signOut = (): Promise<void> => userManager.signoutRedirect()
+export const signOut = (): Promise<void> =>
+  userManager.signoutRedirect({
+    extraQueryParams: {
+      client_id: environment.cognitoClientId,
+      logout_uri: environment.logoutUri,
+    },
+  })
 
 export const getCurrentUser = (): Promise<User | null> => userManager.getUser()
