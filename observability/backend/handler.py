@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -47,6 +49,7 @@ dynamodb = None
 s3 = None
 events = None
 REQUIRED_GROUP = "observability-readonly"
+logger = logging.getLogger(__name__)
 
 
 def _api_gateway_request(event: dict[str, Any]) -> bool:
@@ -54,6 +57,34 @@ def _api_gateway_request(event: dict[str, Any]) -> bool:
     return isinstance(request_context, dict) and isinstance(
         request_context.get("http"), dict
     )
+
+
+def _normalise_groups(raw_groups: Any) -> list[str]:
+    """Convert API Gateway's possible group claim representations to names."""
+    if isinstance(raw_groups, list):
+        return [str(group).strip() for group in raw_groups if str(group).strip()]
+
+    if not isinstance(raw_groups, str):
+        return []
+
+    value = raw_groups.strip()
+    if not value:
+        return []
+
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        decoded = None
+
+    if isinstance(decoded, list):
+        return _normalise_groups(decoded)
+
+    value = value.strip("[]()")
+    return [
+        group.strip().strip("'\"")
+        for group in re.split(r"[,\s]+", value)
+        if group.strip().strip("'\"")
+    ]
 
 
 def _authorized_for_observability(event: dict[str, Any]) -> bool:
@@ -64,21 +95,20 @@ def _authorized_for_observability(event: dict[str, Any]) -> bool:
     authorizer = request_context.get("authorizer", {})
     jwt = authorizer.get("jwt", {})
     claims = jwt.get("claims", {})
-    raw_groups = claims.get("cognito:groups", "")
-    if isinstance(raw_groups, str):
-        try:
-            groups = json.loads(raw_groups)
-            if not isinstance(groups, list):
-                groups = raw_groups.replace(",", " ").split()
-        except json.JSONDecodeError:
-            groups = raw_groups.replace(",", " ").split()
-    elif isinstance(raw_groups, list):
-        groups = raw_groups
-    else:
-        groups = []
+    raw_groups = claims.get("cognito:groups", claims.get("cognito_groups", ""))
+    groups = _normalise_groups(raw_groups)
 
     required_group = os.getenv("OBSERVABILITY_REQUIRED_GROUP", REQUIRED_GROUP)
-    return required_group in groups
+    authorized = required_group in groups
+    logger.info(
+        "Observability authorization: claim_keys=%s raw_groups_type=%s "
+        "group_count=%d required_group_present=%s",
+        sorted(claims.keys()),
+        type(raw_groups).__name__,
+        len(groups),
+        authorized,
+    )
+    return authorized
 
 
 def _forbidden_response() -> dict[str, Any]:
