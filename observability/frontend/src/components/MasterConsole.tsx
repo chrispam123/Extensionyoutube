@@ -10,7 +10,7 @@ import type {
 } from '../types/observability'
 
 interface MasterConsoleProps {
-  data: ObservabilityResponse
+  data: ObservabilityResponse | null
   onRefresh: () => void
   onSignOut: () => void
   loading: boolean
@@ -156,17 +156,44 @@ function JobsStation({ jobs }: { jobs: JobsSummary | null }) {
   )
 }
 
+function TelemetryActuator({ loading, active, onRefresh }: { loading: boolean; active: boolean; onRefresh: () => void }) {
+  return (
+    <section className={`hub-actuator-shell ${loading ? 'probing' : active ? 'nominal' : 'standby'}`} aria-label="Actuador maestro de telemetría">
+      <div className="hub-telemetry-banner" role="status">
+        {loading
+          ? '● INITIATING PROBE // SYNCING WITH AWS...'
+          : active
+            ? '● TELEMETRY STREAM ACTIVE | TODOS LOS COMPONENTES ENERGIZADOS'
+            : '▲ [!] NO TELEMETRY STREAM | PULSA EL ACTUADOR PARA ENERGIZAR EL BUS'}
+      </div>
+      <div className="hub-actuator">
+        <img src="/assets/actuador.jpg" alt="Actuador maestro de telemetría" />
+        <span className="hub-actuator-led" aria-hidden="true" />
+        <button className="hub-actuator-button" type="button" onClick={onRefresh} disabled={loading} aria-label="Refresh status">
+          <span className="sr-only">Refresh status</span>
+        </button>
+        <div className="hub-actuator-subtext">
+          {loading ? '● INITIATING PROBE // SYNCING WITH AWS...' : active ? '[PROBE COMPLETED // BUS NOMINAL]' : '[CLICK TO PROBE AWS BACKEND]'}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterConsoleProps) {
   return (
     <main className="hub-page">
       <header className="hub-header">
         <div className="hub-title-block"><span className="hub-led" /><div><span className="hub-kicker">NOCTURNE OBSERVABILIDAD // MOTOR EDA SERVERLESS AWS</span><h1>HUB CENTRAL DE OPERACIONES // NAVEGACIÓN ENTRE ESTACIONES DE MANDO</h1></div></div>
-        <div className="hub-global-meta"><span>ENTORNO: <b>{data.environment.toUpperCase()}</b></span><span>NÚCLEO: <b className={`hub-core-status ${data.status}`}>● {statusLabel[data.status]}</b></span><button onClick={onRefresh} disabled={loading}>{loading ? 'LEYENDO...' : 'ACTUALIZAR ESTADO'}</button><button className="hub-exit-button" onClick={onSignOut}>[SALIR // BLOQUEAR CHASIS]</button></div>
+        <div className="hub-global-meta"><span>ENTORNO: <b>{data?.environment.toUpperCase() ?? 'DEVELOP'}</b></span><span>NÚCLEO: <b className={`hub-core-status ${data?.status ?? 'warning'}`}>● {data ? statusLabel[data.status] : 'SIN TELEMETRÍA'}</b></span><button className="hub-exit-button" onClick={onSignOut}>[SALIR // BLOQUEAR CHASIS]</button></div>
       </header>
-      <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
-      <IngressStation api={getApiGateway(data)} eventbridge={getEventBridge(data)} />
-      <LambdaStation components={data.components ?? []} />
-      <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} /><JobsStation jobs={getJobs(data)} /></div>
+      <TelemetryActuator loading={loading} active={data !== null} onRefresh={onRefresh} />
+      {data && <>
+        <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
+        <IngressStation api={getApiGateway(data)} eventbridge={getEventBridge(data)} />
+        <LambdaStation components={data.components ?? []} />
+        <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} /><JobsStation jobs={getJobs(data)} /></div>
+      </>}
     </main>
   )
 }
