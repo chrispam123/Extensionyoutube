@@ -41,5 +41,5 @@ export function App() {
   if (accessDenied) return <AccessDeniedPage />
   if (!user) return <LoginPage />
 
-  return <DashboardPage accessToken={user.access_token} email={user.profile.email as string | undefined} />
+  return <DashboardPage accessToken={user.access_token} />
 }
