@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type {
   ApiGatewaySummary,
   EventBridgeSummary,
@@ -27,14 +27,14 @@ const getEventBridge = (data: ObservabilityResponse) => data.eventbridge ?? null
 const getQueues = (data: ObservabilityResponse) => data.queues ?? []
 const getJobs = (data: ObservabilityResponse) => data.jobs ?? null
 
-function StationHeading({ title, subtitle, actionLabel, accent }: { title: string; subtitle: string; actionLabel: string; accent: string }) {
+function StationHeading({ title, subtitle, actionLabel, accent, onOpen }: { title: string; subtitle: string; actionLabel: string; accent: string; onOpen?: () => void }) {
   return (
     <div className="hub-station-heading">
       <div>
         <span className="hub-station-title" style={{ color: accent }}>{title}</span>
         <div className="hub-station-subtitle">{subtitle}</div>
       </div>
-      <button className="hub-station-button" disabled>{actionLabel}</button>
+      <button className="hub-station-button" onClick={onOpen} disabled={!onOpen}>{actionLabel}</button>
     </div>
   )
 }
@@ -54,12 +54,12 @@ function InstrumentPreview({ image, label, children }: { image: string; label: s
   )
 }
 
-function IngressStation({ api, eventbridge }: { api: ApiGatewaySummary | null; eventbridge: EventBridgeSummary | null }) {
+function IngressStation({ api, eventbridge, onOpen }: { api: ApiGatewaySummary | null; eventbridge: EventBridgeSummary | null; onOpen: () => void }) {
   const apiStatus = api?.status ?? 'warning'
   const eventStatus = eventbridge?.status ?? 'warning'
   return (
     <section className="hub-station hub-station-wide">
-      <StationHeading title="ESTACIÓN 01 // ADMISIÓN HTTP & OSCILADOR TEMPORIZADOR" subtitle="[API GATEWAY + EVENTBRIDGE]" actionLabel="➔ ABRIR ESTACIÓN COMPLETA (AGUJA + RADAR DEDICADOS)" accent="#00f0ff" />
+      <StationHeading title="ESTACIÓN 01 // ADMISIÓN HTTP & OSCILADOR TEMPORIZADOR" subtitle="[API GATEWAY + EVENTBRIDGE]" actionLabel="➔ ABRIR ESTACIÓN COMPLETA (AGUJA + RADAR DEDICADOS)" accent="#00f0ff" onOpen={onOpen} />
       <div className="hub-ingress-grid">
         <div className="hub-preview-with-copy">
           <InstrumentPreview image="/assets/api-gateway-gauge.png" label="API Gateway gauge">
@@ -94,6 +94,47 @@ function IngressStation({ api, eventbridge }: { api: ApiGatewaySummary | null; e
         </div>
       </div>
     </section>
+  )
+}
+
+function IngressDetail({ api, eventbridge, onBack }: { api: ApiGatewaySummary | null; eventbridge: EventBridgeSummary | null; onBack: () => void }) {
+  const requests = api?.metrics.requests ?? null
+  const errors5xx = api?.metrics.errors_5xx ?? null
+  const errorRate = api?.metrics.error_rate_5xx ?? null
+  const invocations = eventbridge?.metrics.invocations ?? null
+  const failedInvocations = eventbridge?.metrics.failed_invocations ?? null
+  const hasHttpActivity = requests !== null && requests > 0
+  const hasCronActivity = invocations !== null && invocations > 0
+  const has5xx = (errors5xx !== null && errors5xx > 0) || (errorRate !== null && errorRate > 0)
+  const display = (value: string | number | null | undefined, suffix = '') => value === null || value === undefined ? 'NO OBSERVADO' : `${value}${suffix}`
+
+  return (
+    <>
+      <div className="hub-detail-toolbar"><span>ESTACIÓN 01 // TELEMETRÍA DE ADMISIÓN</span><button className="hub-station-button" onClick={onBack}>◀ RETORNAR AL HUB CENTRAL</button></div>
+      <main className="hub-ingress-detail">
+        <section className="hub-ingress-detail-head"><span className="hub-kicker">EVENT-DRIVEN OBSERVABILITY CORE</span><h2>API GATEWAY + EVENTBRIDGE // BUS DE ADMISIÓN</h2><p>LECTURA DEL SNAPSHOT REAL // SIN ACCIONES OPERATIVAS</p></section>
+        <div className="hub-ingress-detail-grid">
+          <section className="hub-detail-instrument">
+            <div className="hub-detail-label"><span className="cyan-text">COLECTOR 01 // API GATEWAY</span><span>ID: {api?.api_id ?? 'NO OBSERVADO'}</span></div>
+            <InstrumentPreview image="/assets/api-gateway-gauge.png" label="API Gateway gauge">
+              <div className="hub-gauge-overlay"><strong>{display(requests)}</strong><span>REQ / WINDOW</span></div>
+              <div className="hub-lcd"><span>P95: <b>{display(api?.metrics.latency_p95_ms, 'ms')}</b></span><span>4XX: <b>{display(api?.metrics.errors_4xx)}</b></span><span>5XX: <b className={has5xx ? 'danger-text' : ''}>{display(errors5xx)}</b></span><span>RATE: <b className={has5xx ? 'danger-text' : ''}>{display(errorRate, '%')}</b></span></div>
+            </InstrumentPreview>
+            <div className="hub-detail-status"><span>ESTADO: <b className={api?.status ?? 'warning'}>{api ? statusLabel[api.status] : 'NO OBSERVADO'}</b></span><span>STAGE: {api?.stage ?? '—'}</span></div>
+          </section>
+          <div className="hub-detail-divider">INTAKE<br />&amp; SYNC</div>
+          <section className="hub-detail-instrument">
+            <div className="hub-detail-label"><span className="amber-text">OSCILADOR 02 // EVENTBRIDGE</span><span>{eventbridge?.rule_name ?? 'NO OBSERVADO'}</span></div>
+            <InstrumentPreview image="/assets/eventbridge-clock.png" label="EventBridge clock">
+              <div className="hub-clock-overlay"><span>INVOCACIONES</span><strong>{display(invocations)}</strong></div>
+              <div className="hub-lcd"><span>STATE: <b>{eventbridge?.state ?? 'NO OBSERVADO'}</b></span><span>FAILURES: <b className={failedInvocations ? 'danger-text' : ''}>{display(failedInvocations)}</b></span><span>TARGET: <b>{eventbridge?.target_function ?? 'NO OBSERVADO'}</b></span></div>
+            </InstrumentPreview>
+            <div className="hub-detail-status"><span>TARGET_CFG: <b className={eventbridge?.target_configured ? 'healthy' : 'warning'}>{eventbridge ? (eventbridge.target_configured ? 'TRUE' : 'FALSE') : 'NO OBSERVADO'}</b></span><span>RULE: {eventbridge?.schedule_expression ?? '—'}</span></div>
+          </section>
+        </div>
+        <section className="hub-snapshot-strip"><div><span className="amber-text">SIMULADOR DE ENTRADA Y DISPARO:</span><small>LECTURA REAL DEL SNAPSHOT, SIN DISPARAR SERVICIOS</small></div><div className="hub-snapshot-states"><span className={!hasHttpActivity && !has5xx ? 'active' : ''}>[01] REPOSO {!hasHttpActivity && !has5xx ? 'NOMINAL' : 'NO APLICABLE'}</span><span className={hasHttpActivity ? 'active' : ''}>[02] INYECCIÓN HTTP {hasHttpActivity ? 'DETECTADA' : 'SIN EVENTOS'}</span><span className={hasCronActivity ? 'active' : ''}>[03] PULSO DE CRON {hasCronActivity ? 'DETECTADO' : 'SIN EVENTOS'}</span><span className={has5xx ? 'critical' : ''}>[04] ALERTA 5XX {has5xx ? 'DETECTADA' : 'SIN ALERTA'}</span></div></section>
+      </main>
+    </>
   )
 }
 
@@ -181,6 +222,14 @@ function TelemetryActuator({ loading, active, onRefresh }: { loading: boolean; a
 }
 
 export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterConsoleProps) {
+  const [station, setStation] = useState<'hub' | 'ingress'>('hub')
+  const api = data ? getApiGateway(data) : null
+  const eventbridge = data ? getEventBridge(data) : null
+
+  if (station === 'ingress' && data) {
+    return <main className="hub-page"><IngressDetail api={api} eventbridge={eventbridge} onBack={() => setStation('hub')} /></main>
+  }
+
   return (
     <main className="hub-page">
       <header className="hub-header">
@@ -190,7 +239,7 @@ export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterCon
       <TelemetryActuator loading={loading} active={data !== null} onRefresh={onRefresh} />
       {data && <>
         <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
-        <IngressStation api={getApiGateway(data)} eventbridge={getEventBridge(data)} />
+        <IngressStation api={api} eventbridge={eventbridge} onOpen={() => setStation('ingress')} />
         <LambdaStation components={data.components ?? []} />
         <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} /><JobsStation jobs={getJobs(data)} /></div>
       </>}
