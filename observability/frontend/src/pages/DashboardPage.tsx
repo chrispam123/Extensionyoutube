@@ -28,7 +28,7 @@ export function DashboardPage({ accessToken }: DashboardPageProps) {
   return (
     <>
       {error && <p className="error console-error">{error}</p>}
-      {data ? <MasterConsole data={data} onRefresh={() => void refresh()} onSignOut={() => void signOut()} loading={loading} /> : <main className="page centered"><p>NO TELEMETRY // PRESS REFRESH STATUS</p><button onClick={() => void refresh()} disabled={loading}>{loading ? 'READING...' : 'REFRESH STATUS'}</button></main>}
+      <MasterConsole data={data} onRefresh={() => void refresh()} onSignOut={() => void signOut()} loading={loading} />
     </>
   )
 }

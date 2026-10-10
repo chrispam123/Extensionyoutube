@@ -151,6 +151,25 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-terminal-footer b { color: #00ff66; }
 .hub-terminal-footer span:last-child { color: #ffb800; font-weight: 700; }
 .hub-station-footer { display: flex; justify-content: space-between; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #1a2330; font-size: 0.56rem; }
+.hub-actuator-shell { width: min(1120px, 100%); }
+.hub-telemetry-banner { margin-bottom: 0.7rem; color: #ffb800; font-family: 'Chakra Petch', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-align: center; text-shadow: 0 0 8px rgba(255, 184, 0, 0.45); }
+.hub-actuator-shell.probing .hub-telemetry-banner { color: #00f0ff; }
+.hub-actuator-shell.nominal .hub-telemetry-banner { color: #00ff66; text-shadow: 0 0 8px rgba(0, 255, 102, 0.45); }
+.hub-actuator { position: relative; aspect-ratio: 3712 / 1152; overflow: hidden; }
+.hub-actuator > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hub-actuator-led { position: absolute; top: 45%; left: 16.1%; width: 2.2%; aspect-ratio: 1; border-radius: 50%; background: #374151; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5); }
+.hub-actuator-shell.probing .hub-actuator-led { background: #00f0ff; box-shadow: 0 0 14px #00f0ff; animation: actuator-ping 1s steps(2, end) infinite; }
+.hub-actuator-shell.nominal .hub-actuator-led { background: #00ff66; box-shadow: 0 0 14px #00ff66; }
+.hub-actuator-button { position: absolute; top: 25%; left: 39%; width: 22%; height: 40%; padding: 0; border: 0; clip-path: polygon(12% 0, 88% 0, 100% 18%, 100% 82%, 88% 100%, 12% 100%, 0 82%, 0 18%); background: transparent; cursor: pointer; }
+.hub-actuator-button:hover:not(:disabled), .hub-actuator-button:focus-visible { outline: 2px solid #ffb800; outline-offset: 5px; filter: drop-shadow(0 0 12px rgba(255, 184, 0, 0.75)); }
+.hub-actuator-button:disabled { cursor: wait; }
+.hub-actuator-shell.probing .hub-actuator-button { filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.9)); }
+.hub-actuator-shell.nominal .hub-actuator-button { filter: drop-shadow(0 0 14px rgba(0, 255, 102, 0.75)); }
+.hub-actuator-subtext { position: absolute; top: 75%; right: 0; left: 0; color: #ffb800; font-family: 'JetBrains Mono', monospace; font-size: clamp(0.42rem, 0.8vw, 0.72rem); letter-spacing: 0.08em; text-align: center; text-shadow: 0 0 7px currentColor; }
+.hub-actuator-shell.probing .hub-actuator-subtext { color: #00f0ff; }
+.hub-actuator-shell.nominal .hub-actuator-subtext { color: #00ff66; }
+@keyframes actuator-ping { 50% { opacity: 0.35; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 @media (max-width: 1000px) {
   .hub-header { align-items: flex-start; flex-direction: column; }
