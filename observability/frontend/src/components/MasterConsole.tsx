@@ -17,9 +17,9 @@ interface MasterConsoleProps {
 }
 
 const statusLabel: Record<HealthStatus, string> = {
-  healthy: 'HEALTHY',
-  warning: 'WARNING',
-  critical: 'BREACH',
+  healthy: 'SALUDABLE',
+  warning: 'AVISO',
+  critical: 'BRECHA',
 }
 
 const getApiGateway = (data: ObservabilityResponse) => data.api_gateway ?? null
@@ -27,14 +27,14 @@ const getEventBridge = (data: ObservabilityResponse) => data.eventbridge ?? null
 const getQueues = (data: ObservabilityResponse) => data.queues ?? []
 const getJobs = (data: ObservabilityResponse) => data.jobs ?? null
 
-function StationHeading({ title, subtitle, accent }: { title: string; subtitle: string; accent: string }) {
+function StationHeading({ title, subtitle, actionLabel, accent }: { title: string; subtitle: string; actionLabel: string; accent: string }) {
   return (
     <div className="hub-station-heading">
       <div>
         <span className="hub-station-title" style={{ color: accent }}>{title}</span>
         <div className="hub-station-subtitle">{subtitle}</div>
       </div>
-      <button className="hub-station-button" disabled>OPEN STATION ➔</button>
+      <button className="hub-station-button" disabled>{actionLabel}</button>
     </div>
   )
 }
@@ -59,7 +59,7 @@ function IngressStation({ api, eventbridge }: { api: ApiGatewaySummary | null; e
   const eventStatus = eventbridge?.status ?? 'warning'
   return (
     <section className="hub-station hub-station-wide">
-      <StationHeading title="STATION 01 // HTTP INGRESS & TIMER OSCILLATOR" subtitle="[API GATEWAY + EVENTBRIDGE]" accent="#00f0ff" />
+      <StationHeading title="ESTACIÓN 01 // ADMISIÓN HTTP & OSCILADOR TEMPORIZADOR" subtitle="[API GATEWAY + EVENTBRIDGE]" actionLabel="➔ ABRIR ESTACIÓN COMPLETA (AGUJA + RADAR DEDICADOS)" accent="#00f0ff" />
       <div className="hub-ingress-grid">
         <div className="hub-preview-with-copy">
           <InstrumentPreview image="/assets/api-gateway-gauge.png" label="API Gateway gauge">
@@ -72,9 +72,9 @@ function IngressStation({ api, eventbridge }: { api: ApiGatewaySummary | null; e
             </div>
           </InstrumentPreview>
           <div className="hub-instrument-copy">
-            <b className="cyan-text">API GATEWAY // {api?.api_id ?? 'NOT OBSERVED'}</b>
-            <span>STAGE: {api?.stage ?? '—'} | LATENCY: {api?.metrics.latency_p95_ms ?? 0} ms</span>
-            <HealthLine status={apiStatus}>STATUS</HealthLine>
+            <b className="cyan-text">API GATEWAY // {api?.api_id ?? 'NO OBSERVADO'}</b>
+            <span>ETAPA: {api?.stage ?? '—'} | LATENCIA: {api?.metrics.latency_p95_ms ?? 0} ms</span>
+            <HealthLine status={apiStatus}>ESTADO</HealthLine>
           </div>
         </div>
 
@@ -87,9 +87,9 @@ function IngressStation({ api, eventbridge }: { api: ApiGatewaySummary | null; e
             </div>
           </InstrumentPreview>
           <div className="hub-instrument-copy">
-            <b className="amber-text">EVENTBRIDGE // {eventbridge?.rule_name ?? 'NOT OBSERVED'}</b>
-            <span>RATE: {eventbridge?.schedule_expression ?? '—'} | TARGET: {eventbridge?.target_function ?? '—'}</span>
-            <HealthLine status={eventStatus}>STATUS</HealthLine>
+            <b className="amber-text">EVENTBRIDGE // {eventbridge?.rule_name ?? 'NO OBSERVADO'}</b>
+            <span>FRECUENCIA: {eventbridge?.schedule_expression ?? '—'} | OBJETIVO: {eventbridge?.target_function ?? '—'}</span>
+            <HealthLine status={eventStatus}>ESTADO</HealthLine>
           </div>
         </div>
       </div>
@@ -100,7 +100,7 @@ function IngressStation({ api, eventbridge }: { api: ApiGatewaySummary | null; e
 function LambdaStation({ components }: { components: LambdaComponent[] }) {
   return (
     <section className="hub-station hub-station-wide">
-      <StationHeading title="STATION 02 // COMPUTE RACK (6 SERVERLESS MODULES)" subtitle="[AUTH, UPLOAD, DISPATCHER, WORKER, STATUS, RESUMER]" accent="#ffb800" />
+      <StationHeading title="ESTACIÓN 02 // BASTIDOR DE CÓMPUTO (6 MÓDULOS SERVERLESS)" subtitle="[AUTH, UPLOAD, DISPATCHER, WORKER, STATUS, RESUMER]" actionLabel="➔ ABRIR ESTACIÓN DE LAMBDAS (ZOOM PROGRESIVO DE 3 NIVELES)" accent="#ffb800" />
       <div className="hub-cartridge-grid">
         {components.map((component, index) => (
           <article className="hub-cartridge" data-status={component.status} key={component.component}>
@@ -109,7 +109,7 @@ function LambdaStation({ components }: { components: LambdaComponent[] }) {
             <div className="hub-cartridge-lcd">
               <div><span>{component.function_name}</span><b>● {component.status === 'healthy' ? 'OK' : statusLabel[component.status]}</b></div>
               <div className="hub-mini-metrics"><span>INV {component.metrics.invocations}</span><span>P95 {Math.round(component.metrics.duration_p95_ms)}ms</span><span>ERR {component.metrics.errors}</span></div>
-              <div className="hub-cartridge-footer"><span>ZOOM READY</span><span>➔</span></div>
+              <div className="hub-cartridge-footer"><span>ZOOM LISTO</span><span>➔</span></div>
             </div>
           </article>
         ))}
@@ -124,7 +124,7 @@ function QueueStation({ queues }: { queues: QueueSummary[] }) {
   const dlqCount = queues.filter((queue) => queue.type === 'dlq').reduce((total, queue) => total + queue.metrics.visible, 0)
   return (
     <section className="hub-station hub-half-station">
-      <StationHeading title="STATION 03 // SQS & DLQ CONTAINMENT" subtitle="Ingestion ➔ Claim-Check ➔ Work Circuit" accent="#00f0ff" />
+      <StationHeading title="ESTACIÓN 03 // VASOS DE CONTENCIÓN SQS & DLQ" subtitle="Circuito de ingesta ➔ Transferencia Claim-Check ➔ Circuito de trabajo" actionLabel="➔ ABRIR CON LEYENDAS Y FLUJO COMPLETO" accent="#00f0ff" />
       <div className="hub-vessel-row">
         {[['01: INGESTION SQS', ingestion, 'S3 ➔ DISPATCHER'], ['02: WORK SQS', work, 'UPLOAD/DISPATCH ➔ WORKER']].map(([label, queue, flow]) => {
           const item = queue as QueueSummary | undefined
@@ -135,7 +135,7 @@ function QueueStation({ queues }: { queues: QueueSummary[] }) {
           </div>
         })}
       </div>
-      <div className={`hub-station-footer ${dlqCount > 0 ? 'critical' : 'healthy'}`}>● {dlqCount > 0 ? `${dlqCount} DLQ BREACH` : 'DLQ ZERO RESIDUES'}</div>
+      <div className={`hub-station-footer ${dlqCount > 0 ? 'critical' : 'healthy'}`}>● {dlqCount > 0 ? `${dlqCount} BRECHA DLQ` : 'DLQ SIN RESIDUOS'}</div>
     </section>
   )
 }
@@ -145,13 +145,13 @@ function JobsStation({ jobs }: { jobs: JobsSummary | null }) {
   const statuses = [['INIT', 'INITIALIZING'], ['PEND', 'PENDING'], ['RUN', 'RUNNING'], ['DONE', 'DONE'], ['FAIL', 'FAILED'], ['QUOTA', 'PAUSED_QUOTA']] as const
   return (
     <section className="hub-station hub-half-station">
-      <StationHeading title="STATION 04 // JOBS & BATCH REGISTER" subtitle="DynamoDB Jobs Table + S3 Exports" accent="#00ff66" />
+      <StationHeading title="ESTACIÓN 04 // REGISTRO DE TRABAJOS & LOTES" subtitle="Tabla de trabajos DynamoDB + Exportaciones S3" actionLabel="➔ ABRIR AUDITORÍA COMPLETA S3" accent="#00ff66" />
       <div className="hub-terminal">
-        <div className="hub-terminal-header"><b>PIPELINE EXECUTION REGISTER</b><span>OLDEST: {jobs?.metrics.oldest_age_seconds_by_status.DONE ?? 0}s</span></div>
+        <div className="hub-terminal-header"><b>REGISTRO DE EJECUCIÓN DEL PIPELINE</b><span>MÁS ANTIGUO: {jobs?.metrics.oldest_age_seconds_by_status.DONE ?? 0}s</span></div>
         <div className="hub-vfd-grid">{statuses.map(([label, key]) => <div className={key === 'DONE' ? 'done' : key === 'FAILED' ? 'failed' : ''} key={key}><span>{label}</span><strong>{counts[key] ?? 0}</strong></div>)}</div>
-        <div className="hub-terminal-footer"><span>VERIFIED EXPORTS: <b>{jobs?.metrics.done_exports_checked ?? 0} / {jobs?.metrics.done_exports_missing ?? 0} MISSING</b></span><span>CLICK TO AUDIT ➔</span></div>
+        <div className="hub-terminal-footer"><span>EXPORTACIONES VERIFICADAS: <b>{jobs?.metrics.done_exports_checked ?? 0} / {jobs?.metrics.done_exports_missing ?? 0} FALTANTES</b></span><span>ABRIR AUDITORÍA ➔</span></div>
       </div>
-      <div className="hub-station-footer healthy">● {counts.DONE ?? 0} COMPLETED ({jobs?.metrics.stale_running ?? 0} STALE)</div>
+      <div className="hub-station-footer healthy">● {counts.DONE ?? 0} COMPLETADOS ({jobs?.metrics.stale_running ?? 0} ATASCADOS)</div>
     </section>
   )
 }
@@ -160,10 +160,10 @@ export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterCon
   return (
     <main className="hub-page">
       <header className="hub-header">
-        <div className="hub-title-block"><span className="hub-led" /><div><span className="hub-kicker">NOCTURNE OBSERVABILITY // AWS SERVERLESS EDA ENGINE</span><h1>CENTRAL OPERATIONS HUB // NAVIGATION BETWEEN COMMAND STATIONS</h1></div></div>
-        <div className="hub-global-meta"><span>ENV: <b>{data.environment.toUpperCase()}</b></span><span>CORE: <b className={`hub-core-status ${data.status}`}>● {statusLabel[data.status]}</b></span><button onClick={onRefresh} disabled={loading}>{loading ? 'READING...' : 'REFRESH STATUS'}</button><button className="hub-exit-button" onClick={onSignOut}>[EXIT // LOCK CHASSIS]</button></div>
+        <div className="hub-title-block"><span className="hub-led" /><div><span className="hub-kicker">NOCTURNE OBSERVABILIDAD // MOTOR EDA SERVERLESS AWS</span><h1>HUB CENTRAL DE OPERACIONES // NAVEGACIÓN ENTRE ESTACIONES DE MANDO</h1></div></div>
+        <div className="hub-global-meta"><span>ENTORNO: <b>{data.environment.toUpperCase()}</b></span><span>NÚCLEO: <b className={`hub-core-status ${data.status}`}>● {statusLabel[data.status]}</b></span><button onClick={onRefresh} disabled={loading}>{loading ? 'LEYENDO...' : 'ACTUALIZAR ESTADO'}</button><button className="hub-exit-button" onClick={onSignOut}>[SALIR // BLOQUEAR CHASIS]</button></div>
       </header>
-      <div className="hub-last-read">LAST TELEMETRY: {new Date(data.observed_at).toISOString()} // WINDOW: {data.window_minutes ?? 5} MIN</div>
+      <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
       <IngressStation api={getApiGateway(data)} eventbridge={getEventBridge(data)} />
       <LambdaStation components={data.components ?? []} />
       <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} /><JobsStation jobs={getJobs(data)} /></div>
