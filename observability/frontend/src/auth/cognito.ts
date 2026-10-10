@@ -38,9 +38,12 @@ export const signIn = (selectAccount = false): Promise<void> => {
     selectAccount || window.sessionStorage.getItem(SELECT_ACCOUNT_KEY) === 'true'
   window.sessionStorage.removeItem(SELECT_ACCOUNT_KEY)
 
-  return userManager.signinRedirect(
-    shouldSelectAccount ? { extraQueryParams: { prompt: 'select_account' } } : undefined,
-  )
+  return userManager.signinRedirect({
+    extraQueryParams: {
+      identity_provider: 'Google',
+      ...(shouldSelectAccount ? { prompt: 'select_account' } : {}),
+    },
+  })
 }
 
 export const completeSignIn = (): Promise<User> => userManager.signinRedirectCallback()
