@@ -135,6 +135,14 @@ jobs:
 
       - name: Build observability frontend
         working-directory: observability/frontend
+        env:
+          # CI only needs non-empty values so Vite can compile the bundle.
+          # Deployment uses the real Terraform outputs in CD Deployment.
+          VITE_OBSERVABILITY_API_URL: https://example.invalid/observability
+          VITE_COGNITO_ISSUER: https://cognito-idp.us-east-1.amazonaws.com/ci-placeholder
+          VITE_COGNITO_CLIENT_ID: ci-placeholder
+          VITE_COGNITO_REDIRECT_URI: http://localhost:5173/auth/callback
+          VITE_COGNITO_LOGOUT_URI: http://localhost:5173/
         run: npm run build
 
   deploy-dev:
