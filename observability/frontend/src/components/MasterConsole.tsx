@@ -34,7 +34,7 @@ function StationHeading({ title, subtitle, actionLabel, accent, onOpen }: { titl
         <span className="hub-station-title" style={{ color: accent }}>{title}</span>
         <div className="hub-station-subtitle">{subtitle}</div>
       </div>
-      <button className="hub-station-button" onClick={onOpen} disabled={!onOpen}>{actionLabel}</button>
+      {actionLabel && <button className="hub-station-button" onClick={onOpen} disabled={!onOpen}>{actionLabel}</button>}
     </div>
   )
 }
@@ -162,13 +162,60 @@ function IngressDetail({ api, eventbridge, onBack }: { api: ApiGatewaySummary | 
   )
 }
 
-function LambdaStation({ components }: { components: LambdaComponent[] }) {
+const lambdaTopology: Record<string, { channel: string; role: string }> = {
+  auth: { channel: 'API_GW / DYNAMODB', role: 'Valida la sesión de la extensión y registra el perfil autenticado en DynamoDB.' },
+  upload: { channel: 'API_GW / S3 / SQS WORK', role: 'Crea el Job PENDING, genera la URL prefirmada de S3 y encola el claim-check.' },
+  dispatcher: { channel: 'S3 / SQS INGESTION / SQS WORK', role: 'Consume el evento de S3, identifica el trabajo y encola un mensaje ligero en SQS Work.' },
+  worker: { channel: 'SQS WORK / S3 / DYNAMODB', role: 'Consume el claim-check, procesa la lista y actualiza el trabajo y la exportación.' },
+  status: { channel: 'API_GW / DYNAMODB / S3', role: 'Consulta el trabajo del usuario y prepara la URL prefirmada de la exportación.' },
+  resumer: { channel: 'EVENTBRIDGE / DYNAMODB / SQS WORK', role: 'Detecta trabajos PAUSED_QUOTA y los reactiva publicando un mensaje en SQS Work.' },
+}
+
+function getLambdaTopology(component: LambdaComponent) {
+  return lambdaTopology[component.component.toLowerCase()] ?? { channel: 'NO OBSERVADO', role: 'Topología todavía no catalogada para este componente.' }
+}
+
+function LambdaTelemetry({ component, onBack }: { component: LambdaComponent; onBack: () => void }) {
+  const topology = getLambdaTopology(component)
+  return (
+    <main className="lambda-detail-page lambda-telemetry-page">
+      <div className="lambda-detail-toolbar"><span>NIVEL 3 // RAW_TELEMETRY // TELEMETRY_BUS</span><button className="hub-station-button" onClick={onBack}>[X] RETORNAR AL CARTUCHO</button></div>
+      <header className="lambda-telemetry-header"><div><span className="hub-kicker">● {component.status === 'healthy' ? 'HEALTHY' : statusLabel[component.status]}</span><h2>MOD_{component.component.toUpperCase()} // [{component.function_name}]</h2></div><span>VENTANA: 5 MINUTOS DESLIZANTE</span></header>
+      <div className="lambda-telemetry-status"><span>STATUS: <b className={component.status}>● {statusLabel[component.status]}</b></span><span>STAGE: <b>DEVELOP</b></span></div>
+      <div className="lambda-telemetry-grid"><section><h3>01. EJECUCIÓN &amp; LATENCIA</h3><p>Invocaciones (Ejecuciones): <b>{component.metrics.invocations}</b></p><p>Duration P95 (Respuesta): <b className="cyan-text">{Math.round(component.metrics.duration_p95_ms)} ms</b></p></section><section><h3>02. ERRORES &amp; RESTRICCIONES</h3><p>Errors (Recuento Fallos): <b>{component.metrics.errors}</b></p><p>Error Rate (Porcentaje): <b className={component.metrics.error_rate > 0 ? 'danger-text' : 'healthy'}>{component.metrics.error_rate.toFixed(1)} %</b></p><p>Throttles (Estrangulamientos): <b>{component.metrics.throttles}</b></p></section></div>
+      <section className="lambda-topology-panel"><h3>TOPOLOGÍA EN NOCTURNE EDA:</h3><p>➔ CANAL / BUS: <b>{topology.channel}</b></p><p>➔ ROL: {topology.role}</p></section>
+      <section className="lambda-log-placeholder"><span>LOG STREAM // CLOUDWATCH</span><b>NO CONSULTADO EN ESTE MVP</b><small>La telemetría actual expone métricas agregadas; los logs reales requieren una consulta backend específica.</small></section>
+      <footer className="lambda-detail-footer"><span>CORE_RACK_SLOT: <b>{component.component.toUpperCase()}</b></span><span className="healthy">BUS_INTEGRITY: READ_ONLY</span></footer>
+    </main>
+  )
+}
+
+function LambdaDetail({ component, onBack }: { component: LambdaComponent; onBack: () => void }) {
+  const topology = getLambdaTopology(component)
+  const [deepTelemetry, setDeepTelemetry] = useState(false)
+  if (deepTelemetry) return <LambdaTelemetry component={component} onBack={() => setDeepTelemetry(false)} />
+  return (
+    <main className="lambda-detail-page">
+      <div className="lambda-detail-toolbar"><button className="hub-station-button" onClick={onBack}>◀ RETORNAR AL RACK DE 6</button><span>SLOT: BAY // [{component.component.toUpperCase()}]</span></div>
+      <div className="lambda-cartridge-detail">
+        <div className="lambda-cartridge-detail-hint">[CLICK: VER TELEMETRÍA COMPLETA]</div>
+        <img src="/assets/lambda-cartridge.jpg" alt={`Cartucho Lambda ${component.component}`} />
+        <div className="lambda-cartridge-detail-label"><span className="hub-led" /> MOD_{component.component.toUpperCase()}</div>
+        <div className="lambda-cartridge-detail-metrics"><div><span>{component.function_name}</span><b className={component.status}>{statusLabel[component.status]}</b></div><div className="hub-mini-metrics"><span>INV {component.metrics.invocations}</span><span>P95 {Math.round(component.metrics.duration_p95_ms)}ms</span><span>ERR {component.metrics.errors}</span></div><div><span>BUS: {topology.channel.split(' / ')[0]}</span><span className="amber-text">EXPAND ➔</span></div></div>
+      </div>
+      <section className="lambda-topology-summary"><h3>TOPOLOGÍA EN NOCTURNE EDA:</h3><p>➔ CANAL / BUS: <b>{topology.channel}</b></p><p>➔ ROL: {topology.role}</p></section>
+      <button className="lambda-expand-button" onClick={() => setDeepTelemetry(true)}>➔ ABRIR DESGLOSE TÉCNICO COMPLETO (NIVEL 3)</button>
+    </main>
+  )
+}
+
+function LambdaStation({ components, onOpen }: { components: LambdaComponent[]; onOpen: (component: LambdaComponent) => void }) {
   return (
     <section className="hub-station hub-station-wide">
-      <StationHeading title="ESTACIÓN 02 // BASTIDOR DE CÓMPUTO (6 MÓDULOS SERVERLESS)" subtitle="[AUTH, UPLOAD, DISPATCHER, WORKER, STATUS, RESUMER]" actionLabel="➔ ABRIR ESTACIÓN DE LAMBDAS (ZOOM PROGRESIVO DE 3 NIVELES)" accent="#ffb800" />
+      <StationHeading title="ESTACIÓN 02 // BASTIDOR DE CÓMPUTO (6 MÓDULOS SERVERLESS)" subtitle="[AUTH, UPLOAD, DISPATCHER, WORKER, STATUS, RESUMER]" actionLabel="" accent="#ffb800" />
       <div className="hub-cartridge-grid">
         {components.map((component, index) => (
-          <article className="hub-cartridge" data-status={component.status} key={component.component}>
+          <article className="hub-cartridge" data-status={component.status} key={component.component} role="button" tabIndex={0} onClick={() => onOpen(component)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen(component) }}>
             <img src="/assets/lambda-cartridge.jpg" alt="" aria-hidden="true" />
             <div className="hub-cartridge-label">MOD_{String(index + 1).padStart(2, '0')} // {component.component.toUpperCase()}</div>
             <div className="hub-cartridge-lcd">
@@ -247,11 +294,16 @@ function TelemetryActuator({ loading, active, onRefresh }: { loading: boolean; a
 
 export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterConsoleProps) {
   const [station, setStation] = useState<'hub' | 'ingress'>('hub')
+  const [selectedLambda, setSelectedLambda] = useState<LambdaComponent | null>(null)
   const api = data ? getApiGateway(data) : null
   const eventbridge = data ? getEventBridge(data) : null
 
   if (station === 'ingress' && data) {
     return <main className="hub-page"><IngressDetail api={api} eventbridge={eventbridge} onBack={() => setStation('hub')} /></main>
+  }
+
+  if (selectedLambda) {
+    return <main className="hub-page"><LambdaDetail component={selectedLambda} onBack={() => setSelectedLambda(null)} /></main>
   }
 
   return (
@@ -264,7 +316,7 @@ export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterCon
       {data && <>
         <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
         <IngressStation api={api} eventbridge={eventbridge} onOpen={() => setStation('ingress')} />
-        <LambdaStation components={data.components ?? []} />
+        <LambdaStation components={data.components ?? []} onOpen={setSelectedLambda} />
         <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} /><JobsStation jobs={getJobs(data)} /></div>
       </>}
     </main>
