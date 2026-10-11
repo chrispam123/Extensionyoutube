@@ -115,20 +115,32 @@ function IngressDetail({ api, eventbridge, onBack }: { api: ApiGatewaySummary | 
         <section className="hub-ingress-detail-head"><span className="hub-kicker">EVENT-DRIVEN OBSERVABILITY CORE</span><h2>API GATEWAY + EVENTBRIDGE // BUS DE ADMISIÓN</h2><p>LECTURA DEL SNAPSHOT REAL // SIN ACCIONES OPERATIVAS</p></section>
         <div className="hub-ingress-detail-grid">
           <section className="hub-detail-instrument">
-            <div className="hub-detail-label"><span className="cyan-text">COLECTOR 01 // API GATEWAY</span><span>ID: {api?.api_id ?? 'NO OBSERVADO'}</span></div>
-            <InstrumentPreview image="/assets/api-gateway-gauge.png" label="API Gateway gauge">
-              <div className="hub-gauge-overlay"><strong>{display(requests)}</strong><span>REQ / WINDOW</span></div>
-              <div className="hub-lcd"><span>P95: <b>{display(api?.metrics.latency_p95_ms, 'ms')}</b></span><span>4XX: <b>{display(api?.metrics.errors_4xx)}</b></span><span>5XX: <b className={has5xx ? 'danger-text' : ''}>{display(errors5xx)}</b></span><span>RATE: <b className={has5xx ? 'danger-text' : ''}>{display(errorRate, '%')}</b></span></div>
-            </InstrumentPreview>
+            <div className="hub-detail-instrument-stage">
+              <div className="hub-detail-label"><span className="cyan-text">COLECTOR 01 // API GATEWAY</span><span>ID: {api?.api_id ?? 'NO OBSERVADO'}</span></div>
+              <div className="hub-instrument-row api">
+                <div className="hub-lcd">
+                  <span>P95: <b>{display(api?.metrics.latency_p95_ms, 'ms')}</b></span><span>4XX: <b>{display(api?.metrics.errors_4xx)}</b></span><span>5XX: <b className={has5xx ? 'danger-text' : ''}>{display(errors5xx)}</b></span><span>RATE: <b className={has5xx ? 'danger-text' : ''}>{display(errorRate, '%')}</b></span>
+                </div>
+                <InstrumentPreview image="/assets/api-gateway-gauge.png" label="API Gateway gauge">
+                  <div className="hub-gauge-overlay"><strong>{display(requests)}</strong><span>REQ / WINDOW</span></div>
+                </InstrumentPreview>
+              </div>
+            </div>
             <div className="hub-detail-status"><span>ESTADO: <b className={api?.status ?? 'warning'}>{api ? statusLabel[api.status] : 'NO OBSERVADO'}</b></span><span>STAGE: {api?.stage ?? '—'}</span></div>
           </section>
           <div className="hub-detail-divider">INTAKE<br />&amp; SYNC</div>
           <section className="hub-detail-instrument">
-            <div className="hub-detail-label"><span className="amber-text">OSCILADOR 02 // EVENTBRIDGE</span><span>{eventbridge?.rule_name ?? 'NO OBSERVADO'}</span></div>
-            <InstrumentPreview image="/assets/eventbridge-clock.png" label="EventBridge clock">
-              <div className="hub-clock-overlay"><span>INVOCACIONES</span><strong>{display(invocations)}</strong></div>
-              <div className="hub-lcd"><span>STATE: <b>{eventbridge?.state ?? 'NO OBSERVADO'}</b></span><span>FAILURES: <b className={failedInvocations ? 'danger-text' : ''}>{display(failedInvocations)}</b></span><span>TARGET: <b>{eventbridge?.target_function ?? 'NO OBSERVADO'}</b></span></div>
-            </InstrumentPreview>
+            <div className="hub-detail-instrument-stage">
+              <div className="hub-detail-label"><span className="amber-text">OSCILADOR 02 // EVENTBRIDGE</span><span>{eventbridge?.rule_name ?? 'NO OBSERVADO'}</span></div>
+              <div className="hub-instrument-row eventbridge">
+                <InstrumentPreview image="/assets/eventbridge-clock.png" label="EventBridge clock">
+                  <div className="hub-clock-overlay"><span>INVOCACIONES</span><strong>{display(invocations)}</strong></div>
+                </InstrumentPreview>
+                <div className="hub-lcd">
+                  <span>STATE: <b>{eventbridge?.state ?? 'NO OBSERVADO'}</b></span><span>FAILURES: <b className={failedInvocations ? 'danger-text' : ''}>{display(failedInvocations)}</b></span><span>TARGET: <b>{eventbridge?.target_function ?? 'NO OBSERVADO'}</b></span>
+                </div>
+              </div>
+            </div>
             <div className="hub-detail-status"><span>TARGET_CFG: <b className={eventbridge?.target_configured ? 'healthy' : 'warning'}>{eventbridge ? (eventbridge.target_configured ? 'TRUE' : 'FALSE') : 'NO OBSERVADO'}</b></span><span>RULE: {eventbridge?.schedule_expression ?? '—'}</span></div>
           </section>
         </div>
