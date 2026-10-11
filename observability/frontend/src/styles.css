@@ -162,6 +162,21 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-ingress-detail .hub-gauge-overlay strong { font-size: clamp(1.35rem, 2.8vw, 2rem); }
 .hub-ingress-detail .hub-gauge-overlay span, .hub-ingress-detail .hub-clock-overlay span { font-size: 0.68rem; }
 .hub-ingress-detail .hub-clock-overlay strong { font-size: clamp(1.1rem, 2vw, 1.55rem); }
+.hub-health-led { position: absolute; z-index: 3; width: 4.5%; aspect-ratio: 1; border-radius: 50%; background: #374151; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.55); }
+.hub-health-led.healthy { background: #00ff66; box-shadow: 0 0 10px #00ff66, inset 0 0 0 2px rgba(0, 0, 0, 0.55); }
+.hub-health-led.critical { background: #ff2a42; box-shadow: 0 0 10px #ff2a42, inset 0 0 0 2px rgba(0, 0, 0, 0.55); }
+.hub-health-led.warning { background: #ffb800; box-shadow: 0 0 8px #ffb800, inset 0 0 0 2px rgba(0, 0, 0, 0.55); }
+.hub-health-led.off { opacity: 0.55; }
+.hub-api-led-left { bottom: 28.5%; left: 21.8%; }
+.hub-api-led-right { right: 22%; bottom: 28.5%; }
+.hub-event-led-first { bottom: 23%; left: 24.2%; }
+.hub-event-led-second { bottom: 16%; left: 24.2%; }
+.hub-event-led-right-top { right: 24.2%; bottom: 23%; }
+.hub-event-led-right-bottom { right: 24.2%; bottom: 16%; }
+.hub-status-screen { position: absolute; z-index: 3; right: 28%; bottom: 19%; left: 28%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem; min-height: 12%; padding: 0.2rem; color: #00ff66; font-family: 'JetBrains Mono', monospace; font-size: clamp(0.45rem, 0.8vw, 0.7rem); font-weight: 700; line-height: 1.15; text-align: center; text-shadow: 0 0 6px rgba(0, 255, 102, 0.8); }
+.hub-status-screen.warning { color: #ffb800; text-shadow: 0 0 6px rgba(255, 184, 0, 0.8); }
+.hub-status-screen.critical { color: #ff2a42; text-shadow: 0 0 6px rgba(255, 42, 66, 0.8); }
+.hub-status-screen.unknown { color: #94a3b8; text-shadow: none; }
 .hub-detail-instrument-stage { display: flex; flex-direction: column; align-items: center; }
 .hub-detail-instrument-stage .hub-detail-label { width: 300px; }
 .hub-instrument-row { display: grid; align-items: center; gap: 0.75rem; }

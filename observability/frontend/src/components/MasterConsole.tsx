@@ -106,6 +106,10 @@ function IngressDetail({ api, eventbridge, onBack }: { api: ApiGatewaySummary | 
   const hasHttpActivity = requests !== null && requests > 0
   const hasCronActivity = invocations !== null && invocations > 0
   const has5xx = (errors5xx !== null && errors5xx > 0) || (errorRate !== null && errorRate > 0)
+  const apiHealth = !api ? 'unknown' : has5xx || api.status === 'critical' ? 'critical' : api.status === 'healthy' ? 'healthy' : 'warning'
+  const apiScreen = !api ? ['SIN DATOS'] : apiHealth === 'critical' ? ['ERROR 5XX', 'REVISAR API'] : apiHealth === 'healthy' ? ['NOMINAL', 'NO 5XX'] : ['AVISO', 'REVISAR MÉTRICAS']
+  const eventHealth = !eventbridge ? 'unknown' : eventbridge.metrics.failed_invocations > 0 || !eventbridge.target_configured || eventbridge.state.toUpperCase() !== 'ENABLED' || eventbridge.status === 'critical' ? 'critical' : eventbridge.status === 'healthy' ? 'healthy' : 'warning'
+  const eventScreen = !eventbridge ? ['SIN DATOS'] : eventHealth === 'critical' ? ['ERROR', 'REVISAR REGLA'] : eventHealth === 'healthy' ? ['RULE ENABLED', 'TARGET OK'] : ['AVISO', 'REVISAR REGLA']
   const display = (value: string | number | null | undefined, suffix = '') => value === null || value === undefined ? 'NO OBSERVADO' : `${value}${suffix}`
 
   return (
@@ -123,6 +127,9 @@ function IngressDetail({ api, eventbridge, onBack }: { api: ApiGatewaySummary | 
                 </div>
                 <InstrumentPreview image="/assets/api-gateway-gauge.png" label="API Gateway gauge">
                   <div className="hub-gauge-overlay"><strong>{display(requests)}</strong><span>REQ / WINDOW</span></div>
+                  <span className={`hub-health-led hub-api-led-left ${apiHealth === 'healthy' ? 'healthy' : 'off'}`} aria-hidden="true" />
+                  <span className={`hub-health-led hub-api-led-right ${apiHealth === 'critical' ? 'critical' : 'off'}`} aria-hidden="true" />
+                  <div className={`hub-status-screen ${apiHealth}`} aria-label="Estado de API Gateway">{apiScreen.map((line) => <span key={line}>{line}</span>)}</div>
                 </InstrumentPreview>
               </div>
             </div>
@@ -135,6 +142,11 @@ function IngressDetail({ api, eventbridge, onBack }: { api: ApiGatewaySummary | 
               <div className="hub-instrument-row eventbridge">
                 <InstrumentPreview image="/assets/eventbridge-clock.png" label="EventBridge clock">
                   <div className="hub-clock-overlay"><span>INVOCACIONES</span><strong>{display(invocations)}</strong></div>
+                  <span className={`hub-health-led hub-event-led-first ${eventHealth === 'healthy' ? 'healthy' : 'off'}`} aria-hidden="true" />
+                  <span className={`hub-health-led hub-event-led-second ${eventHealth === 'critical' ? 'critical' : 'off'}`} aria-hidden="true" />
+                  <span className="hub-health-led hub-event-led-right-top off" aria-hidden="true" />
+                  <span className="hub-health-led hub-event-led-right-bottom off" aria-hidden="true" />
+                  <div className={`hub-status-screen ${eventHealth}`} aria-label="Estado de EventBridge">{eventScreen.map((line) => <span key={line}>{line}</span>)}</div>
                 </InstrumentPreview>
                 <div className="hub-lcd">
                   <span>STATE: <b>{eventbridge?.state ?? 'NO OBSERVADO'}</b></span><span>FAILURES: <b className={failedInvocations ? 'danger-text' : ''}>{display(failedInvocations)}</b></span><span>TARGET: <b>{eventbridge?.target_function ?? 'NO OBSERVADO'}</b></span>
