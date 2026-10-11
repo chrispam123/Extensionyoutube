@@ -230,19 +230,43 @@ function LambdaStation({ components, onOpen }: { components: LambdaComponent[]; 
   )
 }
 
-function QueueStation({ queues }: { queues: QueueSummary[] }) {
+function QueueDetail({ queues, onBack }: { queues: QueueSummary[]; onBack: () => void }) {
+  const ingestion = queues.find((queue) => queue.queue === 'ingestion')
+  const work = queues.find((queue) => queue.queue === 'work')
+  const dlqCount = queues.filter((queue) => queue.type === 'dlq').reduce((total, queue) => total + queue.metrics.visible, 0)
+  const queueName = (queue: QueueSummary | undefined) => queue?.queue_name ?? 'NO OBSERVADO'
+  const queueState = (queue: QueueSummary | undefined) => queue ? statusLabel[queue.status] : 'NO OBSERVADO'
+  const queueHealth = (queue: QueueSummary | undefined) => queue?.status === 'healthy' ? 'healthy' : queue?.status === 'critical' ? 'critical' : 'warning'
+  return (
+    <main className="sqs-detail-page">
+      <header className="sqs-detail-header"><div><span className="hub-kicker">NOCTURNE // ASYNCHRONOUS PIPELINE MONITOR</span><h1>TOPOLOGÍA FÍSICA DE COLAS // FLUJO DE TRANSPORTE REAL</h1></div><span>PATRÓN: <b className="amber-text">CLAIM-CHECK + S3 BYPASS</b></span><span>ESTADO: <b className={dlqCount > 0 ? 'critical' : 'healthy'}>● {dlqCount > 0 ? 'REVISAR DLQ' : 'CIRCUITO OPERATIVO'}</b></span><button className="hub-station-button" onClick={onBack}>◀ RETORNAR AL HUB CENTRAL</button></header>
+      <div className="sqs-flow-grid">
+        <section className="sqs-flow-column"><div className="sqs-flow-label"><b>▼ 1. PUNTO DE ENTRADA (INFLOW):</b><span>S3 EVENT</span><strong>S3 Bucket [uploads/userId/jobId.json]</strong><small>La extensión sube el archivo; S3 dispara el evento automático.</small></div><QueueDetailVessel queue={ingestion} label="SQS INGESTION" /><div className="sqs-flow-label bottom"><b>▲ 2. DESTINO DE CONSUMO (OUTFLOW):</b><span>MOD_DISPATCHER</span><strong>Lambda Dispatcher [{queueName(ingestion)}]</strong><small>Consume el evento de S3, crea el Job y transfiere el ticket ligero a SQS Work.</small></div></section>
+        <div className="sqs-claim-check"><b>CONEXIÓN DE<br />TRANSFERENCIA</b><strong>CLAIM-CHECK TICKET</strong><code>{'{ jobId, userId }'}</code><small>No viaja el JSON pesado; el Dispatcher solo inyecta la llave de referencia hacia SQS Work.</small><span>➜ ➜ ➜</span></div>
+        <section className="sqs-flow-column"><div className="sqs-flow-label"><b>▼ 1. PUNTOS DE INYECCIÓN (INFLOW):</b><span>DUAL_SOURCE</span><strong>A) Lambda Upload (Export) o<br />B) Lambda Dispatcher (Import)</strong><small>Ambos depositan el ticket en la cola de trabajo.</small></div><QueueDetailVessel queue={work} label="SQS WORK" /><div className="sqs-flow-label bottom"><b>▲ 2. DESTINO DE CONSUMO (OUTFLOW):</b><span>MOD_WORKER</span><strong>Lambda Worker [{queueName(work)}]</strong><small>Consume el mensaje, obtiene el JSON desde S3 y actualiza DynamoDB/S3.</small></div></section>
+      </div>
+      <div className="sqs-detail-footer"><span>ESTADO INGESTION: <b className={queueHealth(ingestion)}>{queueState(ingestion)}</b></span><span>ESTADO WORK: <b className={queueHealth(work)}>{queueState(work)}</b></span><span>DLQ VISIBLES: <b className={dlqCount > 0 ? 'critical' : 'healthy'}>{dlqCount}</b></span></div>
+    </main>
+  )
+}
+
+function QueueDetailVessel({ queue, label }: { queue: QueueSummary | undefined; label: string }) {
+  return <div className="sqs-detail-vessel"><div className="sqs-detail-vessel-image"><img src="/assets/sqs-containment-vessel.png" alt={label} /><span>VIS: {queue?.metrics.visible ?? 0}</span><small>IN-FLIGHT: {queue?.metrics.not_visible ?? 0}</small></div><div className="sqs-detail-vessel-metrics"><span>QUEUE: <b>{queue?.queue_name ?? 'NO OBSERVADO'}</b></span><span>OLDEST: <b>{queue?.metrics.oldest_age_seconds ?? 0}s</b></span><span>STATUS: <b className={queue?.status ?? 'warning'}>{queue ? statusLabel[queue.status] : 'NO OBSERVADO'}</b></span></div></div>
+}
+
+function QueueStation({ queues, onOpen }: { queues: QueueSummary[]; onOpen: () => void }) {
   const ingestion = queues.find((queue) => queue.queue === 'ingestion')
   const work = queues.find((queue) => queue.queue === 'work')
   const dlqCount = queues.filter((queue) => queue.type === 'dlq').reduce((total, queue) => total + queue.metrics.visible, 0)
   return (
     <section className="hub-station hub-half-station">
-      <StationHeading title="ESTACIÓN 03 // VASOS DE CONTENCIÓN SQS & DLQ" subtitle="Circuito de ingesta ➔ Transferencia Claim-Check ➔ Circuito de trabajo" actionLabel="➔ ABRIR CON LEYENDAS Y FLUJO COMPLETO" accent="#00f0ff" />
+      <StationHeading title="ESTACIÓN 03 // VASOS DE CONTENCIÓN SQS & DLQ" subtitle="Circuito de ingesta ➔ Transferencia Claim-Check ➔ Circuito de trabajo" actionLabel="➔ ABRIR CON LEYENDAS Y FLUJO COMPLETO" accent="#00f0ff" onOpen={onOpen} />
       <div className="hub-vessel-row">
         {[['01: INGESTION SQS', ingestion, 'S3 ➔ DISPATCHER'], ['02: WORK SQS', work, 'UPLOAD/DISPATCH ➔ WORKER']].map(([label, queue, flow]) => {
           const item = queue as QueueSummary | undefined
           return <div className="hub-vessel" key={label as string}>
             <b>{label as string}</b>
-            <div className="hub-vessel-image"><img src="/assets/sqs-containment-vessel.png" alt="" aria-hidden="true" /><span>VIS: {item?.metrics.visible ?? 0}</span><small>DLQ: {dlqCount}</small></div>
+            <div className="hub-vessel-image"><img src="/assets/sqs-containment-vessel.png" alt="" aria-hidden="true" /><div className="hub-vessel-liquid" aria-hidden="true" /><span>VIS: {item?.metrics.visible ?? 0}</span><small>DLQ: {dlqCount}</small></div>
             <span>{flow as string}</span>
           </div>
         })}
@@ -295,6 +319,7 @@ function TelemetryActuator({ loading, active, onRefresh }: { loading: boolean; a
 export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterConsoleProps) {
   const [station, setStation] = useState<'hub' | 'ingress'>('hub')
   const [selectedLambda, setSelectedLambda] = useState<LambdaComponent | null>(null)
+  const [sqsOpen, setSqsOpen] = useState(false)
   const api = data ? getApiGateway(data) : null
   const eventbridge = data ? getEventBridge(data) : null
 
@@ -304,6 +329,10 @@ export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterCon
 
   if (selectedLambda) {
     return <main className="hub-page"><LambdaDetail component={selectedLambda} onBack={() => setSelectedLambda(null)} /></main>
+  }
+
+  if (sqsOpen && data) {
+    return <main className="hub-page"><QueueDetail queues={getQueues(data)} onBack={() => setSqsOpen(false)} /></main>
   }
 
   return (
@@ -317,7 +346,7 @@ export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterCon
         <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
         <IngressStation api={api} eventbridge={eventbridge} onOpen={() => setStation('ingress')} />
         <LambdaStation components={data.components ?? []} onOpen={setSelectedLambda} />
-        <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} /><JobsStation jobs={getJobs(data)} /></div>
+        <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} onOpen={() => setSqsOpen(true)} /><JobsStation jobs={getJobs(data)} /></div>
       </>}
     </main>
   )
