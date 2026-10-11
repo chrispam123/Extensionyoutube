@@ -115,7 +115,9 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-cartridge-grid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 0.9rem; }
 .hub-cartridge { position: relative; aspect-ratio: 9 / 16; overflow: hidden; clip-path: polygon(0 0, 94% 0, 100% 4%, 100% 96%, 94% 100%, 0 100%); background: #070a0e; cursor: pointer; }
 .hub-cartridge > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hub-cartridge-plasma { position: absolute; z-index: 1; top: 32%; left: 36%; width: 28%; height: 34%; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0, 255, 102, 0.55) 0%, rgba(255, 184, 0, 0.3) 42%, transparent 78%); mix-blend-mode: screen; filter: drop-shadow(0 0 10px rgba(0, 255, 102, 0.7)); animation: lambda-cartridge-pulse 2.4s steps(8, end) infinite; }
 .hub-cartridge::after { position: absolute; inset: 0; content: ''; border: 1px solid #3a4a5d; pointer-events: none; }
+.hub-cartridge:hover::after, .hub-cartridge:focus-visible::after, .hub-cartridge:active::after { border: 2px solid #00ff66; box-shadow: inset 0 0 16px rgba(0, 255, 102, 0.55), 0 0 12px rgba(0, 255, 102, 0.75); }
 .hub-cartridge[data-status='warning']::after { border-color: #ff7700; }
 .hub-cartridge[data-status='critical']::after { border-color: #ff2a42; }
 .hub-cartridge-label { position: absolute; z-index: 2; top: 5%; right: 0; left: 0; margin: 0 0.5rem; padding: 0.2rem; border: 1px solid #3a4a5d; background: rgba(7, 10, 14, 0.95); color: #e2e8f0; font-family: 'Chakra Petch', sans-serif; font-size: 0.5rem; font-weight: 700; text-align: center; }
@@ -126,6 +128,7 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-cartridge[data-status='critical'] .hub-cartridge-lcd b { color: #ff2a42; }
 .hub-mini-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.2rem; margin: 0.3rem 0; border: 0 !important; color: #fff; }
 .hub-cartridge-footer { border-top: 1px solid #1a232f; padding-top: 0.2rem; color: #ffb800; }
+@keyframes lambda-cartridge-pulse { 0%, 100% { opacity: 0.2; transform: scaleY(0.86); } 50% { opacity: 0.9; transform: scaleY(1); } }
 .hub-bottom-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
 .hub-half-station { display: flex; min-width: 0; flex-direction: column; justify-content: space-between; }
 .hub-vessel-row { justify-content: space-around; gap: 1rem; padding: 0.5rem 0; }

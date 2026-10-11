@@ -198,7 +198,6 @@ function LambdaDetail({ component, onBack }: { component: LambdaComponent; onBac
     <main className="lambda-detail-page">
       <div className="lambda-detail-toolbar"><button className="hub-station-button" onClick={onBack}>◀ RETORNAR AL RACK DE 6</button><span>SLOT: BAY // [{component.component.toUpperCase()}]</span></div>
       <div className="lambda-cartridge-detail">
-        <div className="lambda-cartridge-detail-hint">[CLICK: VER TELEMETRÍA COMPLETA]</div>
         <img src="/assets/lambda-cartridge.jpg" alt={`Cartucho Lambda ${component.component}`} />
         <div className="lambda-cartridge-detail-label"><span className="hub-led" /> MOD_{component.component.toUpperCase()}</div>
         <div className="lambda-cartridge-detail-metrics"><div><span>{component.function_name}</span><b className={component.status}>{statusLabel[component.status]}</b></div><div className="hub-mini-metrics"><span>INV {component.metrics.invocations}</span><span>P95 {Math.round(component.metrics.duration_p95_ms)}ms</span><span>ERR {component.metrics.errors}</span></div><div><span>BUS: {topology.channel.split(' / ')[0]}</span><span className="amber-text">EXPAND ➔</span></div></div>
@@ -217,6 +216,7 @@ function LambdaStation({ components, onOpen }: { components: LambdaComponent[]; 
         {components.map((component, index) => (
           <article className="hub-cartridge" data-status={component.status} key={component.component} role="button" tabIndex={0} onClick={() => onOpen(component)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen(component) }}>
             <img src="/assets/lambda-cartridge.jpg" alt="" aria-hidden="true" />
+            <div className="hub-cartridge-plasma" aria-hidden="true" />
             <div className="hub-cartridge-label">MOD_{String(index + 1).padStart(2, '0')} // {component.component.toUpperCase()}</div>
             <div className="hub-cartridge-lcd">
               <div><span>{component.function_name}</span><b>● {component.status === 'healthy' ? 'OK' : statusLabel[component.status]}</b></div>
