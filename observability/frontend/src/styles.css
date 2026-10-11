@@ -162,15 +162,18 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-ingress-detail .hub-gauge-overlay strong { font-size: clamp(1.35rem, 2.8vw, 2rem); }
 .hub-ingress-detail .hub-gauge-overlay span, .hub-ingress-detail .hub-clock-overlay span { font-size: 0.68rem; }
 .hub-ingress-detail .hub-clock-overlay strong { font-size: clamp(1.1rem, 2vw, 1.55rem); }
-.hub-ingress-detail .hub-lcd { position: absolute; overflow: hidden; gap: 0.35rem; padding: 0.55rem 0.65rem; border-color: rgba(0, 255, 102, 0.7); background: rgba(2, 14, 9, 0.94); color: #a8e8b9; font-size: clamp(0.62rem, 1vw, 0.8rem); box-shadow: inset 0 0 14px rgba(0, 255, 102, 0.2), 0 0 8px rgba(0, 255, 102, 0.35); text-shadow: 0 0 5px rgba(0, 255, 102, 0.55); }
+.hub-detail-instrument-stage { display: flex; flex-direction: column; align-items: center; }
+.hub-detail-instrument-stage .hub-detail-label { width: 300px; }
+.hub-instrument-row { display: grid; align-items: center; gap: 0.75rem; }
+.hub-instrument-row.api { grid-template-columns: 150px 300px; }
+.hub-instrument-row.eventbridge { grid-template-columns: 300px 150px; }
+.hub-ingress-detail .hub-lcd { position: relative; right: auto; bottom: auto; left: auto; width: 150px; box-sizing: border-box; overflow: hidden; gap: 0.35rem; padding: 0.55rem 0.65rem; border-color: rgba(0, 255, 102, 0.7); background: rgba(2, 14, 9, 0.94); color: #a8e8b9; font-size: clamp(0.62rem, 1vw, 0.8rem); box-shadow: inset 0 0 14px rgba(0, 255, 102, 0.2), 0 0 8px rgba(0, 255, 102, 0.35); text-shadow: 0 0 5px rgba(0, 255, 102, 0.55); }
 .hub-ingress-detail .hub-lcd::before { position: absolute; z-index: 0; inset: 0; content: ''; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 255, 102, 0.08) 0, rgba(0, 255, 102, 0.08) 1px, transparent 1px, transparent 4px); animation: lcd-scan 2.4s steps(8, end) infinite; }
 .hub-ingress-detail .hub-lcd span { position: relative; z-index: 1; }
 .hub-ingress-detail .hub-lcd b { position: relative; z-index: 1; color: #00ff66; font-size: 1.05em; }
 .hub-ingress-detail .hub-detail-label, .hub-ingress-detail .hub-detail-status { font-size: clamp(0.62rem, 1vw, 0.75rem); }
 .hub-ingress-detail .hub-detail-label { padding: 0.6rem 0.75rem; }
 .hub-ingress-detail .hub-detail-status { padding-top: 0.15rem; }
-.hub-ingress-detail .hub-detail-instrument:first-child .hub-detail-label { align-self: flex-start; transform: translateX(-1.25rem); }
-.hub-ingress-detail .hub-detail-instrument:last-child .hub-detail-label { align-self: flex-end; transform: translateX(1.25rem); }
 .hub-detail-label, .hub-detail-status { display: flex; width: min(340px, 100%); justify-content: space-between; gap: 0.5rem; color: #64748b; font-size: 0.55rem; }
 .hub-detail-label { padding: 0.45rem 0.6rem; border: 1px solid #202b38; background: #070a0e; }
 .hub-detail-label span:first-child { font-family: 'Chakra Petch', sans-serif; font-weight: 700; }
@@ -213,7 +216,7 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
   .hub-instrument-divider { display: none; }
   .hub-cartridge-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .hub-vessel-row { flex-wrap: wrap; }
-  .hub-ingress-detail-grid { grid-template-columns: 1fr; }.hub-detail-divider { display: none; }.hub-snapshot-strip { align-items: stretch; flex-direction: column; }.hub-snapshot-states { justify-content: flex-start; text-align: left; }
+  .hub-ingress-detail-grid { grid-template-columns: 1fr; }.hub-detail-divider { display: none; }.hub-instrument-row.api, .hub-instrument-row.eventbridge { grid-template-columns: 1fr; }.hub-instrument-row.api .hub-lcd, .hub-instrument-row.eventbridge .hub-lcd { justify-self: center; }.hub-instrument-row.api .hub-instrument-unit, .hub-instrument-row.eventbridge .hub-instrument-unit { grid-row: 1; }.hub-snapshot-strip { align-items: stretch; flex-direction: column; }.hub-snapshot-states { justify-content: flex-start; text-align: left; }
 }
 
 .login-page { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1rem; color: #d7e4e6; background: #030407; background-image: radial-gradient(circle at 50% 50%, rgba(255, 184, 0, 0.09), transparent 34rem); overflow-x: hidden; }
