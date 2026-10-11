@@ -177,6 +177,7 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-status-screen.warning { color: #ffb800; text-shadow: 0 0 6px rgba(255, 184, 0, 0.8); }
 .hub-status-screen.critical { color: #ff2a42; text-shadow: 0 0 6px rgba(255, 42, 66, 0.8); }
 .hub-status-screen.unknown { color: #94a3b8; text-shadow: none; }
+.hub-instrument-row.api .hub-status-screen { bottom: 22%; }
 .hub-detail-instrument-stage { display: flex; flex-direction: column; align-items: center; }
 .hub-detail-instrument-stage .hub-detail-label { width: 300px; }
 .hub-instrument-row { display: grid; align-items: center; gap: 0.75rem; }
