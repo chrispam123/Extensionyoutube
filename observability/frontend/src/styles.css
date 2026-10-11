@@ -89,7 +89,8 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-core-status.healthy, .hub-health-line.healthy, .hub-station-footer.healthy { color: #00ff66; }
 .hub-core-status.warning, .hub-health-line.warning { color: #ff7700; }
 .hub-core-status.critical, .hub-health-line.critical, .hub-station-footer.critical { color: #ff2a42; }
-.hub-last-read { color: #6e7681; font-size: 0.6rem; letter-spacing: 0.08em; text-align: right; text-transform: uppercase; }
+.hub-last-read { display: flex; flex-direction: column; gap: 0.2rem; color: #6e7681; font-size: 0.6rem; letter-spacing: 0.08em; text-align: right; text-transform: uppercase; }
+.hub-last-read span:last-child { color: #00f0ff; }
 .hub-station { padding: 1.25rem; border: 2px solid #1a2330; background: #05070a; box-shadow: 0 0 40px rgba(0, 0, 0, 0.9); }
 .hub-station-heading { justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding: 0 0.25rem 0.6rem; border-bottom: 1px solid #1a2330; }
 .hub-station-title { font-size: 0.7rem; }
@@ -259,7 +260,7 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-actuator-shell.nominal .hub-telemetry-banner { color: #00ff66; text-shadow: 0 0 8px rgba(0, 255, 102, 0.45); }
 .hub-actuator { position: relative; aspect-ratio: 3712 / 1152; overflow: hidden; }
 .hub-actuator > img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.hub-actuator-led { position: absolute; top: 45%; left: 16.1%; width: 2.2%; aspect-ratio: 1; border-radius: 50%; background: #374151; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5); }
+.hub-actuator-led { position: absolute; top: 46.5%; left: 15.6%; width: 2.2%; aspect-ratio: 1; border-radius: 50%; background: #374151; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5); }
 .hub-actuator-shell.probing .hub-actuator-led { background: #00f0ff; box-shadow: 0 0 14px #00f0ff; animation: actuator-ping 1s steps(2, end) infinite; }
 .hub-actuator-shell.nominal .hub-actuator-led { background: #00ff66; box-shadow: 0 0 14px #00ff66; }
 .hub-actuator-button { position: absolute; top: 25%; left: 39%; width: 22%; height: 40%; padding: 0; border: 0; clip-path: polygon(12% 0, 88% 0, 100% 18%, 100% 82%, 88% 100%, 12% 100%, 0 82%, 0 18%); background: transparent; cursor: pointer; }

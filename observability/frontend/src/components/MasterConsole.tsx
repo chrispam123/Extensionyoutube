@@ -26,6 +26,12 @@ const getApiGateway = (data: ObservabilityResponse) => data.api_gateway ?? null
 const getEventBridge = (data: ObservabilityResponse) => data.eventbridge ?? null
 const getQueues = (data: ObservabilityResponse) => data.queues ?? []
 const getJobs = (data: ObservabilityResponse) => data.jobs ?? null
+const formatMadridTime = (timestamp: string) => new Intl.DateTimeFormat('es-ES', {
+  dateStyle: 'medium',
+  timeStyle: 'medium',
+  hour12: false,
+  timeZone: 'Europe/Madrid',
+}).format(new Date(timestamp))
 
 function StationHeading({ title, subtitle, actionLabel, accent, onOpen }: { title: string; subtitle: string; actionLabel: string; accent: string; onOpen?: () => void }) {
   return (
@@ -285,9 +291,9 @@ function JobsStation({ jobs, onOpen }: { jobs: JobsSummary | null; onOpen: () =>
       <div className="hub-terminal is-clickable" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen() }} aria-label="Abrir auditoría completa de lotes DynamoDB y exportaciones S3">
         <div className="hub-terminal-header"><b>REGISTRO DE EJECUCIÓN DEL PIPELINE</b><span>MÁS ANTIGUO: {jobs?.metrics.oldest_age_seconds_by_status.DONE ?? 0}s</span></div>
         <div className="hub-vfd-grid">{statuses.map(([label, key]) => <div className={key === 'DONE' ? 'done' : key === 'FAILED' ? 'failed' : ''} key={key}><span>{label}</span><strong>{counts[key] ?? 0}</strong></div>)}</div>
-        <div className="hub-terminal-footer"><span>EXPORTACIONES VERIFICADAS: <b>{jobs?.metrics.done_exports_checked ?? 0} / {jobs?.metrics.done_exports_missing ?? 0} FALTANTES</b></span></div>
+        <div className="hub-terminal-footer"><span>JOBS DE EXPORTACIÓN AUDITADOS EN S3: <b>{jobs?.metrics.done_exports_checked ?? 0}</b> | OBJETOS AUSENTES: <b>{jobs?.metrics.done_exports_missing ?? 0}</b></span></div>
       </div>
-      <div className="hub-station-footer healthy">● {counts.DONE ?? 0} COMPLETADOS ({jobs?.metrics.stale_running ?? 0} ATASCADOS)</div>
+      <div className="hub-station-footer healthy">● {counts.DONE ?? 0} JOBS COMPLETADOS ({jobs?.metrics.stale_running ?? 0} ATASCADOS)</div>
     </section>
   )
 }
@@ -323,7 +329,7 @@ function JobsDetail({ jobs, onBack }: { jobs: JobsSummary | null; onBack: () => 
       <section className="jobs-state-section"><h2>01. DESGLOSE COMPLETO POR ESTADOS (COUNTS_BY_STATUS)</h2><div className="jobs-state-grid">{statuses.map(([key, description]) => <article className={`jobs-state-card ${key === 'DONE' ? 'done' : key === 'FAILED' ? 'failed' : ''}`} key={key}><span>{key}</span><strong>{counts[key] ?? 0}</strong><small>{description}</small></article>)}</div></section>
       <div className="jobs-audit-grid">
         <section className="jobs-audit-panel"><h2>02. TRABAJOS ESTANCADOS (STALE CHECK)</h2><p><span>Stale Pending / Initializing:</span><b className={stalePending === 0 ? 'healthy' : 'critical'}>{display(stalePending)} {stalePending === 0 ? '(NORMAL)' : '(REVISAR)'}</b></p><p><span>Stale Running (Trabajos Colgados):</span><b className={staleRunning === 0 ? 'healthy' : 'critical'}>{display(staleRunning)} {staleRunning === 0 ? '(NORMAL)' : '(REVISAR)'}</b></p></section>
-        <section className="jobs-audit-panel"><h2>03. AUDITORÍA DE ARCHIVOS EXPORTADOS (S3)</h2><p><span>Done Exports Checked:</span><b>{display(checked)} {checked !== null ? 'VERIFICADOS' : ''}</b></p><p><span>Done Exports Missing (Faltantes):</span><b className={missing === 0 ? 'healthy' : 'critical'}>{display(missing)} {missing !== null ? (missing === 0 ? '(DISPONIBLES)' : '(REVISAR)') : ''}</b></p></section>
+        <section className="jobs-audit-panel"><h2>03. AUDITORÍA DE ARCHIVOS EXPORTADOS (S3)</h2><p><span>Jobs de exportación auditados en S3:</span><b>{display(checked)}</b></p><p><span>Objetos S3 ausentes:</span><b className={missing === 0 ? 'healthy' : 'critical'}>{display(missing)}</b></p></section>
       </div>
       <div className="jobs-oldest"><span>OLDEST AGE (DONE): <b>{oldestDone === null ? 'NO OBSERVADO' : `${oldestDone} SEGUNDOS`}</b></span><b className={consistent ? 'healthy' : 'warning'}>LIFECYCLE: {auditState}</b></div>
       <footer className="jobs-detail-footer"><span>LEDGER_HASH: NO OBSERVADO</span><span className={consistent ? 'healthy' : 'warning'}>AUDIT_VERIFICATION: {auditState}</span></footer>
@@ -387,7 +393,7 @@ export function MasterConsole({ data, onRefresh, onSignOut, loading }: MasterCon
       </header>
       <TelemetryActuator loading={loading} active={data !== null} onRefresh={onRefresh} />
       {data && <>
-        <div className="hub-last-read">ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</div>
+        <div className="hub-last-read"><span>ÚLTIMA TELEMETRÍA: {new Date(data.observed_at).toISOString()} // VENTANA: {data.window_minutes ?? 5} MIN</span><span>HORA ESPAÑA: {formatMadridTime(data.observed_at)}</span></div>
         <IngressStation api={api} eventbridge={eventbridge} onOpen={() => setStation('ingress')} />
         <LambdaStation components={data.components ?? []} onOpen={setSelectedLambda} />
         <div className="hub-bottom-grid"><QueueStation queues={getQueues(data)} onOpen={() => setSqsOpen(true)} /><JobsStation jobs={getJobs(data)} onOpen={() => setJobsOpen(true)} /></div>
