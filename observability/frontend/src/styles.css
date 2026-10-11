@@ -113,7 +113,7 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-health-line { font-size: 0.58rem; }
 .hub-instrument-divider { width: 1px; height: 5rem; background: #1a2330; }
 .hub-cartridge-grid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 0.9rem; }
-.hub-cartridge { position: relative; aspect-ratio: 9 / 16; overflow: hidden; clip-path: polygon(0 0, 94% 0, 100% 4%, 100% 96%, 94% 100%, 0 100%); background: #070a0e; }
+.hub-cartridge { position: relative; aspect-ratio: 9 / 16; overflow: hidden; clip-path: polygon(0 0, 94% 0, 100% 4%, 100% 96%, 94% 100%, 0 100%); background: #070a0e; cursor: pointer; }
 .hub-cartridge > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .hub-cartridge::after { position: absolute; inset: 0; content: ''; border: 1px solid #3a4a5d; pointer-events: none; }
 .hub-cartridge[data-status='warning']::after { border-color: #ff7700; }
@@ -151,6 +151,27 @@ pre { overflow: auto; margin: 0; padding: 1rem; color: #a9c3c5; font-size: 0.7re
 .hub-terminal-footer b { color: #00ff66; }
 .hub-terminal-footer span:last-child { color: #ffb800; font-weight: 700; }
 .hub-station-footer { display: flex; justify-content: space-between; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #1a2330; font-size: 0.56rem; }
+.lambda-detail-page { display: flex; width: min(920px, 100%); flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem; border: 2px solid #ffb800; background: #05070a; box-shadow: 0 0 50px rgba(0, 0, 0, 0.9); }
+.lambda-detail-toolbar { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #ffb800; color: #ffb800; font-size: 0.65rem; letter-spacing: 0.08em; }
+.lambda-cartridge-detail { position: relative; width: min(340px, 100%); aspect-ratio: 9 / 16; overflow: hidden; box-shadow: 0 0 50px rgba(0, 0, 0, 0.9); }
+.lambda-cartridge-detail > img { width: 100%; height: 100%; object-fit: cover; }
+.lambda-cartridge-detail-hint { position: absolute; z-index: 2; top: 3%; right: 2%; padding: 0.25rem 0.4rem; border: 1px solid #00f0ff; background: #070a0e; color: #00f0ff; font-family: 'Chakra Petch', sans-serif; font-size: 0.48rem; }
+.lambda-cartridge-detail-label { position: absolute; z-index: 2; top: 5%; right: 20%; left: 20%; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.3rem; border: 1px solid #3a4a5d; background: rgba(7, 10, 14, 0.95); color: #e2e8f0; font-family: 'Chakra Petch', sans-serif; font-size: 0.58rem; font-weight: 700; }
+.lambda-cartridge-detail-label .hub-led { width: 0.45rem; height: 0.45rem; }
+.lambda-cartridge-detail-metrics { position: absolute; z-index: 2; right: 21.5%; bottom: 12%; left: 21.5%; display: grid; gap: 0.35rem; padding: 0.45rem; border: 1px solid #202b38; background: #070b10; color: #94a3b8; font-size: 0.48rem; }
+.lambda-cartridge-detail-metrics > div { display: flex; justify-content: space-between; gap: 0.3rem; border-bottom: 1px solid #202b38; padding-bottom: 0.2rem; }
+.lambda-cartridge-detail-metrics > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.lambda-cartridge-detail-metrics b.healthy { color: #00ff66; }.lambda-cartridge-detail-metrics b.warning { color: #ff7700; }.lambda-cartridge-detail-metrics b.critical { color: #ff2a42; }
+.lambda-topology-summary, .lambda-topology-panel, .lambda-log-placeholder { width: 100%; padding: 0.85rem 1rem; border: 1px solid #202b38; background: #070b10; color: #94a3b8; font-size: 0.62rem; line-height: 1.6; }
+.lambda-topology-summary h3, .lambda-topology-panel h3 { margin: 0 0 0.35rem; color: #ffb800; font-family: 'Chakra Petch', sans-serif; font-size: 0.7rem; }
+.lambda-topology-summary p, .lambda-topology-panel p { margin: 0.2rem 0; }.lambda-topology-summary b, .lambda-topology-panel b { color: #00f0ff; }
+.lambda-expand-button { padding: 0.7rem 1rem; border-color: #ffb800; background: #ffb800; color: #030407; font-family: 'Chakra Petch', sans-serif; font-size: 0.65rem; font-weight: 700; }
+.lambda-expand-button:hover { background: #ffd45c; }
+.lambda-telemetry-page { align-items: stretch; }
+.lambda-telemetry-header, .lambda-telemetry-status, .lambda-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.lambda-telemetry-header h2 { margin: 0.35rem 0 0; color: #fff; font-family: 'Chakra Petch', sans-serif; font-size: 1rem; }
+.lambda-telemetry-header > span, .lambda-telemetry-status { color: #94a3b8; font-size: 0.58rem; }.lambda-telemetry-status { padding: 0.7rem; border: 1px solid #202b38; background: #040609; }.lambda-telemetry-status b.healthy { color: #00ff66; }.lambda-telemetry-status b.warning { color: #ff7700; }.lambda-telemetry-status b.critical { color: #ff2a42; }
+.lambda-telemetry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }.lambda-telemetry-grid section { padding: 0.8rem; border: 1px solid #202b38; background: #0b1017; }.lambda-telemetry-grid h3 { margin: 0 0 0.7rem; padding-bottom: 0.35rem; border-bottom: 1px solid #202b38; color: #ffb800; font-family: 'Chakra Petch', sans-serif; font-size: 0.65rem; }.lambda-telemetry-grid p { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0; border-bottom: 1px solid #16202c; color: #94a3b8; font-size: 0.58rem; }.lambda-telemetry-grid p:last-child { border-bottom: 0; }.lambda-telemetry-grid p b { color: #e2e8f0; }.lambda-log-placeholder { display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 1rem; }.lambda-log-placeholder b { color: #ffb800; font-size: 0.58rem; }.lambda-log-placeholder small { grid-column: 1 / -1; color: #64748b; }.lambda-detail-footer { width: 100%; padding-top: 0.5rem; border-top: 1px solid #202b38; color: #64748b; font-size: 0.55rem; }.lambda-detail-footer b { color: #ffb800; }.lambda-detail-footer .healthy { color: #00ff66; }
 .hub-detail-toolbar { display: flex; width: min(1720px, 100%); align-items: center; justify-content: space-between; gap: 1rem; color: #94a3b8; font-size: 0.68rem; letter-spacing: 0.08em; }
 .hub-ingress-detail { width: min(1120px, 100%); padding: 1.5rem; border: 2px solid #1a2330; background: #05070a; box-shadow: 0 0 50px rgba(0, 0, 0, 0.9); }
 .hub-ingress-detail-head { padding-bottom: 1rem; border-bottom: 1px solid #202b38; text-align: center; }
