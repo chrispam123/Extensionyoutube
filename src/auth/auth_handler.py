@@ -96,13 +96,28 @@ def lambda_handler(event, context):
     dynamo_resource = _get_dynamo()
     table = dynamo_resource.Table(os.getenv("DYNAMODB_TABLE"))
 
-    raw_path = event.get("rawPath") or event.get("requestContext", {}).get(
-        "http", {}
-    ).get("path", "")
-    is_mobile_flow = raw_path.rstrip("/").endswith("/auth/mobile/login")
+    try:
+        body = json.loads(event.get("body", "{}")) if event.get("body") else {}
+    except Exception:
+        body = {}
+
+    raw_path = (
+        event.get("rawPath")
+        or event.get("path")
+        or event.get("resource")
+        or event.get("requestContext", {}).get("http", {}).get("path")
+        or ""
+    )
+    route_key = (
+        event.get("routeKey") or event.get("requestContext", {}).get("routeKey") or ""
+    )
+    is_mobile_flow = (
+        "mobile" in raw_path
+        or "mobile" in route_key
+        or ("code_verifier" in body if isinstance(body, dict) else False)
+    )
 
     try:
-        body = json.loads(event.get("body", "{}"))
         auth_code = body.get("code")
 
         if not auth_code:
@@ -222,6 +237,11 @@ def lambda_handler(event, context):
                 {
                     "error": "Google Auth Failed",
                     "details": error_details,
+                    "debug": {
+                        "is_mobile_flow": is_mobile_flow,
+                        "raw_path": raw_path,
+                        "token_keys": list(token_data.keys()),
+                    },
                 },
             )
 
