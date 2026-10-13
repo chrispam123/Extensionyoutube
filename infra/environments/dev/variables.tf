@@ -17,3 +17,9 @@ variable "extension_id" {
   description = "ID único de la extensión de Chrome (obtenido de la tienda)"
   type        = string
 }
+
+variable "google_mobile_client_id" {
+  description = "ID de cliente Google OAuth2 para la app Android"
+  type        = string
+  default     = ""
+}

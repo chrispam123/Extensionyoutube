@@ -326,6 +326,15 @@ resource "aws_ssm_parameter" "google_client_id" {
   }
 }
 
+resource "aws_ssm_parameter" "google_mobile_client_id" {
+  name  = "/extension/${var.environment}/mobile/google/client_id"
+  type  = "String"
+  value = var.google_mobile_client_id != "" ? var.google_mobile_client_id : "REPLACE_ME"
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "google_client_secret" {
   name   = "/extension/${var.environment}/google/client_secret"
   type   = "SecureString"
@@ -829,6 +838,7 @@ resource "aws_iam_role_policy" "auth_permissions" {
         Effect = "Allow"
         Resource = [
           aws_ssm_parameter.google_client_id.arn,
+          aws_ssm_parameter.google_mobile_client_id.arn,
           aws_ssm_parameter.google_client_secret.arn,
           aws_ssm_parameter.jwt_secret.arn
         ]
@@ -891,6 +901,12 @@ resource "aws_apigatewayv2_integration" "auth_integration" {
 resource "aws_apigatewayv2_route" "auth_route" {
   api_id    = aws_apigatewayv2_api.http_api.id
   route_key = "POST /auth/login"
+  target    = "integrations/${aws_apigatewayv2_integration.auth_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "auth_mobile_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "POST /auth/mobile/login"
   target    = "integrations/${aws_apigatewayv2_integration.auth_integration.id}"
 }
 
