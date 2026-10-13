@@ -65,24 +65,39 @@ def lambda_handler(event, context):
         }
 
         # =====================================================================
-        # 5. LÓGICA DE ENTREGA: GENERAR URL SI ESTÁ TERMINADO
+        # 5. LÓGICA DE ENTREGA DE URLs PRESIGNADAS
         # =====================================================================
-        if status == "DONE":
-            logger.info(f"🎁 Job {job_id} finalizado. Generando URL de descarga...")
-            bucket_name = os.getenv("S3_BUCKET")
-            # Si es EXPORT, el resultado está en exports/. Si es IMPORT, el origen está en uploads/.
-            s3_key = (
-                f"exports/{user_id}/{job_id}.json"
-                if job_type == "EXPORT"
-                else f"uploads/{user_id}/{job_id}.json"
-            )
+        bucket_name = os.getenv("S3_BUCKET")
 
+        # A. Descarga: Exclusiva para EXPORT finalizado
+        if status == "DONE" and job_type == "EXPORT":
+            logger.info(
+                f"🎁 Job {job_id} (EXPORT) finalizado. Generando URL de descarga..."
+            )
+            s3_key = f"exports/{user_id}/{job_id}.json"
             download_url = s3.generate_presigned_url(
                 ClientMethod="get_object",
                 Params={"Bucket": bucket_name, "Key": s3_key},
-                ExpiresIn=300,  # El usuario tiene 5 minutos para iniciar la descarga
+                ExpiresIn=300,  # 5 minutos para iniciar la descarga
             )
             data["downloadUrl"] = download_url
+
+        # B. Renovación de subida: Para IMPORT en espera de archivo
+        elif status == "INITIALIZING" and job_type == "IMPORT":
+            logger.info(
+                f"📤 Job {job_id} (IMPORT) en espera de archivo. Generando uploadUrl renovada..."
+            )
+            s3_key = f"uploads/{user_id}/{job_id}.json"
+            upload_url = s3.generate_presigned_url(
+                ClientMethod="put_object",
+                Params={
+                    "Bucket": bucket_name,
+                    "Key": s3_key,
+                    "ContentType": "application/json",
+                },
+                ExpiresIn=300,  # 5 minutos para subir el archivo
+            )
+            data["uploadUrl"] = upload_url
         # =====================================================================
 
         return cors_response(200, data)
