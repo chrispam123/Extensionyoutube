@@ -5,16 +5,19 @@ import os
 import jwt
 
 
-def create_nocturne_jwt(user_id: str, email: str, secret: str) -> str:
+def create_nocturne_jwt(
+    user_id: str, email: str, secret: str, platform: str = "CHROME"
+) -> str:
     """
-    Genera un token firmado para la sesión de la extensión.
+    Genera un token firmado para la sesión (Chrome o Android).
     """
+    now = datetime.datetime.now(datetime.UTC)
     payload = {
         "sub": user_id,
         "email": email,
-        "iat": datetime.datetime.utcnow(),
-        "exp": datetime.datetime.utcnow()
-        + datetime.timedelta(days=7),  # Expira en 7 días el token JWT
+        "platform": platform,
+        "iat": now,
+        "exp": now + datetime.timedelta(days=7),  # Expira en 7 días el token JWT
     }
 
     # Algoritmo HS256: Simétrico, usa el JWT_SECRET de SSM

@@ -44,6 +44,7 @@ def lambda_handler(event, context):
         )["Parameter"]["Value"]
         decoded = decode_nocturne_jwt(token, jwt_secret)
         user_id = decoded["sub"]
+        credential_type = decoded.get("platform", "CHROME")
 
         # 2. PARSEO DE OPCIONES
         body = json.loads(event.get("body", "{}"))
@@ -92,6 +93,7 @@ def lambda_handler(event, context):
                 "jobId": job_id,
                 "userId": user_id,
                 "type": job_type,
+                "credentialType": credential_type,
                 "options": options,  # NUEVO: Persistimos la intención
                 "status": initial_status,
                 "expiresAt": expires_at,  # NUEVO: Fusible de autolimpieza
@@ -119,7 +121,12 @@ def lambda_handler(event, context):
             sqs.send_message(
                 QueueUrl=os.getenv("SQS_QUEUE_URL"),
                 MessageBody=json.dumps(
-                    {"jobId": job_id, "userId": user_id, "type": job_type}
+                    {
+                        "jobId": job_id,
+                        "userId": user_id,
+                        "type": job_type,
+                        "credentialType": credential_type,
+                    }
                 ),
             )
 

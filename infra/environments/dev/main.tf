@@ -211,6 +211,7 @@ resource "aws_iam_role_policy" "worker_permissions" {
         Effect = "Allow"
         Resource = [
           aws_ssm_parameter.google_client_id.arn,
+          aws_ssm_parameter.google_mobile_client_id.arn,
           aws_ssm_parameter.google_client_secret.arn
         ]
       }

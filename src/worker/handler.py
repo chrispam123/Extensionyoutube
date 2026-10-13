@@ -5,6 +5,7 @@ import os
 import time
 
 import boto3
+import httpx
 from aws_lambda_powertools import Logger, Tracer
 from botocore.exceptions import ClientError
 
@@ -25,20 +26,39 @@ kms_client = boto3.client("kms", endpoint_url=ENDPOINT_URL)
 ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
 sqs = boto3.client("sqs", endpoint_url=ENDPOINT_URL)
 
-cached_secrets = {"client_id": None, "client_secret": None}
+cached_secrets = {
+    "client_id": None,
+    "client_secret": None,
+    "mobile_client_id": None,
+}
 
 
-def get_google_secrets():
+def get_credentials_for_platform(platform: str):
+    """
+    Obtiene las credenciales de Google según la plataforma:
+    - ANDROID: client_id específico de móvil (sin client_secret, PKCE público).
+    - CHROME: client_id y client_secret de la extensión.
+    """
     env = os.getenv("ENVIRONMENT", "")
     prefix = f"/extension/{env}" if env else "/extension"
-    if not cached_secrets["client_id"] or not cached_secrets["client_secret"]:
-        cached_secrets["client_id"] = ssm.get_parameter(
-            Name=f"{prefix}/google/client_id"
-        )["Parameter"]["Value"]
-        cached_secrets["client_secret"] = ssm.get_parameter(
-            Name=f"{prefix}/google/client_secret", WithDecryption=True
-        )["Parameter"]["Value"]
-    return cached_secrets["client_id"], cached_secrets["client_secret"]
+
+    if platform == "ANDROID":
+        if not cached_secrets.get("mobile_client_id"):
+            cached_secrets["mobile_client_id"] = ssm.get_parameter(
+                Name=f"{prefix}/mobile/google/client_id"
+            )["Parameter"]["Value"]
+        return cached_secrets["mobile_client_id"], None
+    else:
+        if not cached_secrets.get("client_id") or not cached_secrets.get(
+            "client_secret"
+        ):
+            cached_secrets["client_id"] = ssm.get_parameter(
+                Name=f"{prefix}/google/client_id"
+            )["Parameter"]["Value"]
+            cached_secrets["client_secret"] = ssm.get_parameter(
+                Name=f"{prefix}/google/client_secret", WithDecryption=True
+            )["Parameter"]["Value"]
+        return cached_secrets["client_id"], cached_secrets["client_secret"]
 
 
 @logger.inject_lambda_context
@@ -54,10 +74,31 @@ def lambda_handler(event, context):
             payload = json.loads(record["body"])
             job_id, user_id = payload.get("jobId"), payload.get("userId")
             job_key = {"PK": f"USER#{user_id}", "SK": f"JOB#{job_id}"}
-            profile_key = {"PK": f"USER#{user_id}", "SK": "PROFILE"}
-
-            profile_item = table.get_item(Key=profile_key).get("Item", {})
             job_item = table.get_item(Key=job_key).get("Item", {})
+
+            # 1. Determinar credentialType (SQS > Job en DynamoDB > CHROME por compatibilidad)
+            credential_type = (
+                payload.get("credentialType")
+                or job_item.get("credentialType")
+                or "CHROME"
+            ).upper()
+
+            # 2. Obtener perfil de DynamoDB aislado por plataforma
+            profile_item = None
+            if credential_type == "ANDROID":
+                profile_item = table.get_item(
+                    Key={"PK": f"USER#{user_id}", "SK": "PROFILE#ANDROID"}
+                ).get("Item")
+            else:
+                profile_item = table.get_item(
+                    Key={"PK": f"USER#{user_id}", "SK": "PROFILE#CHROME"}
+                ).get("Item")
+
+            if not profile_item:
+                # Fallback al registro espejo PROFILE (retrocompatibilidad histórica)
+                profile_item = table.get_item(
+                    Key={"PK": f"USER#{user_id}", "SK": "PROFILE"}
+                ).get("Item")
 
             if not profile_item or not job_item:
                 logger.error(f"❌ Datos faltantes para Job {job_id}")
@@ -82,16 +123,64 @@ def lambda_handler(event, context):
                     "job_id": job_id,
                     "user_id": user_id,
                     "type": job_type,
+                    "credential_type": credential_type,
                     "done_count": int(job_item.get("doneCount", 0)),
                     "failed_count": int(job_item.get("failedCount", 0)),
                 },
             )
 
-            cid, csec = get_google_secrets()
-            refresh_token = decrypt_token(
-                kms_client, profile_item.get("encryptedRefreshToken")
-            )
-            access_token = refresh_access_token(cid, csec, refresh_token)
+            # 3. Obtener credenciales correspondientes a la plataforma
+            cid, csec = get_credentials_for_platform(credential_type)
+            encrypted_rt = profile_item.get("encryptedRefreshToken")
+
+            if not encrypted_rt:
+                logger.error(f"❌ Sin refresh_token en perfil para Job {job_id}")
+                table.update_item(
+                    Key=job_key,
+                    UpdateExpression="SET #s = :failed, errorMessage = :msg, expiresAt = :ttl, updatedAt = :now",
+                    ExpressionAttributeNames={"#s": "status"},
+                    ExpressionAttributeValues={
+                        ":failed": "FAILED",
+                        ":msg": "No se encontraron credenciales válidas para este usuario.",
+                        ":ttl": int(time.time()) + (6 * 86400),
+                        ":now": datetime.datetime.now(datetime.UTC).isoformat(),
+                    },
+                )
+                continue
+
+            try:
+                refresh_token = decrypt_token(kms_client, encrypted_rt)
+                access_token = refresh_access_token(cid, csec, refresh_token)
+            except httpx.HTTPStatusError as e:
+                status_code = e.response.status_code
+                if status_code in (400, 401, 403):
+                    # Error permanente de autenticación: marcar FAILED y no reintentar
+                    logger.error(f"❌ Error permanente de Google OAuth ({status_code})")
+                    table.update_item(
+                        Key=job_key,
+                        UpdateExpression="SET #s = :failed, errorMessage = :msg, expiresAt = :ttl, updatedAt = :now",
+                        ExpressionAttributeNames={"#s": "status"},
+                        ExpressionAttributeValues={
+                            ":failed": "FAILED",
+                            ":msg": "Sesión expirada o credenciales revocadas. Por favor inicia sesión nuevamente.",
+                            ":ttl": int(time.time()) + (6 * 86400),
+                            ":now": datetime.datetime.now(datetime.UTC).isoformat(),
+                        },
+                    )
+                    continue
+                else:
+                    # Error 5xx o transitorio de Google: re-lanzar para que SQS reintente
+                    logger.warning(
+                        f"⚠️ Error temporal del servidor de Google ({status_code}), delegando reintento a SQS"
+                    )
+                    raise e
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                # Timeout o error transitorio de red: permitir reintento en SQS
+                logger.warning(
+                    "⚠️ Timeout o fallo transitorio de red con Google, delegando reintento a SQS"
+                )
+                raise e
+
             yt = YouTubeClient(access_token)
 
             success_count = 0

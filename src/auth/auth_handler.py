@@ -48,15 +48,29 @@ def _get_ssm_parameter(ssm_client, name: str, with_decryption: bool = False) -> 
 
 
 def _save_or_update_user_profile(
-    table, kms_client, user_id: str, email: str, refresh_token: str | None
+    table,
+    kms_client,
+    user_id: str,
+    email: str,
+    refresh_token: str | None,
+    platform: str,
 ):
     """
-    Persiste o actualiza atómicamente el perfil del usuario.
+    Persiste o actualiza atómicamente el perfil del usuario según la plataforma.
+    Para ANDROID: PK=USER#{sub}, SK=PROFILE#ANDROID.
+    Para CHROME: PK=USER#{sub}, SK=PROFILE#CHROME y espejo SK=PROFILE (para retrocompatibilidad).
     Si Google no devuelve refresh_token (usuario recurrente),
     se preserva el encryptedRefreshToken previo sin sobrescribirlo ni borrarlo.
     """
     now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-    key = {"PK": f"USER#{user_id}", "SK": "PROFILE"}
+
+    keys_to_update = []
+    if platform == "ANDROID":
+        keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE#ANDROID"})
+    else:
+        # Chrome: perfil específico y espejo de compatibilidad
+        keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE#CHROME"})
+        keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE"})
 
     if refresh_token:
         kms_resp = kms_client.encrypt(
@@ -65,24 +79,28 @@ def _save_or_update_user_profile(
         )
         encrypted_rt = base64.b64encode(kms_resp["CiphertextBlob"]).decode("utf-8")
 
-        table.update_item(
-            Key=key,
-            UpdateExpression="SET email = :email, encryptedRefreshToken = :rt, updatedAt = :updatedAt",
-            ExpressionAttributeValues={
-                ":email": email,
-                ":rt": encrypted_rt,
-                ":updatedAt": now_iso,
-            },
-        )
+        for key in keys_to_update:
+            table.update_item(
+                Key=key,
+                UpdateExpression="SET email = :email, platform = :platform, encryptedRefreshToken = :rt, updatedAt = :updatedAt",
+                ExpressionAttributeValues={
+                    ":email": email,
+                    ":platform": platform,
+                    ":rt": encrypted_rt,
+                    ":updatedAt": now_iso,
+                },
+            )
     else:
-        table.update_item(
-            Key=key,
-            UpdateExpression="SET email = :email, updatedAt = :updatedAt",
-            ExpressionAttributeValues={
-                ":email": email,
-                ":updatedAt": now_iso,
-            },
-        )
+        for key in keys_to_update:
+            table.update_item(
+                Key=key,
+                UpdateExpression="SET email = :email, platform = :platform, updatedAt = :updatedAt",
+                ExpressionAttributeValues={
+                    ":email": email,
+                    ":platform": platform,
+                    ":updatedAt": now_iso,
+                },
+            )
 
 
 @logger.inject_lambda_context
@@ -256,13 +274,19 @@ def lambda_handler(event, context):
         user_id = user_info["sub"]
         email = user_info.get("email")
 
-        # Cifrado y Persistencia Atómica en DynamoDB (preserva refresh token existente)
-        _save_or_update_user_profile(table, kms_client, user_id, email, refresh_token)
+        platform = "ANDROID" if is_mobile_flow else "CHROME"
 
-        # Generar JWT interno de Nocturne
-        nocturne_jwt = create_nocturne_jwt(user_id, email, jwt_secret)
+        # Cifrado y Persistencia Atómica en DynamoDB (separado por plataforma, preserva refresh token)
+        _save_or_update_user_profile(
+            table, kms_client, user_id, email, refresh_token, platform
+        )
 
-        logger.info(f"✅ Login exitoso para {email}")
+        # Generar JWT interno de Nocturne con la plataforma asignada por el backend
+        nocturne_jwt = create_nocturne_jwt(
+            user_id, email, jwt_secret, platform=platform
+        )
+
+        logger.info(f"✅ Login exitoso para {email} (plataforma: {platform})")
         return cors_response(200, {"token": nocturne_jwt, "user": email})
 
     except Exception:
