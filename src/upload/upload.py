@@ -76,7 +76,16 @@ def lambda_handler(event, context):
         if job_type == "SYNC_CHECK":
             return cors_response(200, {"active": False})
 
-        # 4. GENERACIÓN DE IDENTIDAD Y TTL
+        # 4. VALIDACIÓN DEFENSIVA DE OPCIONES
+        if not options.get("channels") and not options.get("playlists"):
+            return cors_response(
+                400,
+                {
+                    "error": "Debes seleccionar al menos una opción (canales o playlists)"
+                },
+            )
+
+        # 5. GENERACIÓN DE IDENTIDAD Y TTL
         job_id = str(uuid.uuid4())
         initial_status = "INITIALIZING" if job_type == "IMPORT" else "PENDING"
         # TTL por estado inicial: IMPORT espera archivo (4h), EXPORT ya está listo (10d)
