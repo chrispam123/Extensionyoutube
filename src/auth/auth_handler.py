@@ -136,6 +136,22 @@ def lambda_handler(event, context):
                 ssm_client, f"{prefix}/mobile/google/redirect_uri"
             )
 
+            if not client_id or client_id == "REPLACE_ME":
+                logger.error("❌ SSM parameter mobile/google/client_id no configurado")
+                return cors_response(
+                    500,
+                    {"error": "Server configuration error: client_id is REPLACE_ME"},
+                )
+
+            if not expected_redirect_uri or expected_redirect_uri == "REPLACE_ME":
+                logger.error(
+                    "❌ SSM parameter mobile/google/redirect_uri no configurado"
+                )
+                return cors_response(
+                    500,
+                    {"error": "Server configuration error: redirect_uri is REPLACE_ME"},
+                )
+
             if redirect_uri != expected_redirect_uri:
                 logger.warning("❌ redirect_uri no autorizada en flujo móvil")
                 return cors_response(
@@ -185,10 +201,29 @@ def lambda_handler(event, context):
         )
 
         if response.status_code != 200:
+            error_details = None
+            try:
+                parsed = response.json()
+                if isinstance(parsed, dict):
+                    error_details = parsed
+            except Exception:
+                pass
+
+            if error_details is None:
+                error_details = {
+                    "error": str(getattr(response, "text", "Unknown error"))
+                }
+
             logger.error(
                 f"❌ Fallo en Google OAuth: status_code={response.status_code}"
             )
-            return cors_response(401, {"error": "Google Auth Failed"})
+            return cors_response(
+                401,
+                {
+                    "error": "Google Auth Failed",
+                    "details": error_details,
+                },
+            )
 
         tokens = response.json()
         refresh_token = tokens.get("refresh_token")
