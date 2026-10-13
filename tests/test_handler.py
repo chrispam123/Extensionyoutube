@@ -54,6 +54,10 @@ def test_handler_success(monkeypatch, mocker):
     s3 = boto3.client("s3", region_name="us-east-1")
     ssm = boto3.client("ssm", region_name="us-east-1")
 
+    mocker.patch("src.worker.handler.dynamo", dynamodb)
+    mocker.patch("src.worker.handler.s3", s3)
+    mocker.patch("src.worker.handler.ssm", ssm)
+
     # Crear Tabla con PK y SK
     table = dynamodb.create_table(
         TableName="extension-dynamo-table-local",

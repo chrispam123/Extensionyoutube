@@ -14,14 +14,75 @@ from shared.responses import cors_response, get_cors_headers
 logger = Logger()
 tracer = Tracer()
 
-# Clientes AWS
-ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL")
-if not ENDPOINT_URL or not ENDPOINT_URL.strip():
-    ENDPOINT_URL = None
 
-ssm = boto3.client("ssm", endpoint_url=ENDPOINT_URL)
-kms = boto3.client("kms", endpoint_url=ENDPOINT_URL)
-dynamo = boto3.resource("dynamodb", endpoint_url=ENDPOINT_URL)
+def _get_endpoint_url():
+    raw = os.getenv("AWS_ENDPOINT_URL")
+    return raw if raw and raw.strip() else None
+
+
+def _get_region():
+    return os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+
+def _get_ssm():
+    return boto3.client(
+        "ssm", region_name=_get_region(), endpoint_url=_get_endpoint_url()
+    )
+
+
+def _get_kms():
+    return boto3.client(
+        "kms", region_name=_get_region(), endpoint_url=_get_endpoint_url()
+    )
+
+
+def _get_dynamo():
+    return boto3.resource(
+        "dynamodb", region_name=_get_region(), endpoint_url=_get_endpoint_url()
+    )
+
+
+def _get_ssm_parameter(ssm_client, name: str, with_decryption: bool = False) -> str:
+    response = ssm_client.get_parameter(Name=name, WithDecryption=with_decryption)
+    return response["Parameter"]["Value"]
+
+
+def _save_or_update_user_profile(
+    table, kms_client, user_id: str, email: str, refresh_token: str | None
+):
+    """
+    Persiste o actualiza atómicamente el perfil del usuario.
+    Si Google no devuelve refresh_token (usuario recurrente),
+    se preserva el encryptedRefreshToken previo sin sobrescribirlo ni borrarlo.
+    """
+    now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+    key = {"PK": f"USER#{user_id}", "SK": "PROFILE"}
+
+    if refresh_token:
+        kms_resp = kms_client.encrypt(
+            KeyId=os.getenv("KMS_KEY_ALIAS"),
+            Plaintext=refresh_token.encode("utf-8"),
+        )
+        encrypted_rt = base64.b64encode(kms_resp["CiphertextBlob"]).decode("utf-8")
+
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET email = :email, encryptedRefreshToken = :rt, updatedAt = :updatedAt",
+            ExpressionAttributeValues={
+                ":email": email,
+                ":rt": encrypted_rt,
+                ":updatedAt": now_iso,
+            },
+        )
+    else:
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET email = :email, updatedAt = :updatedAt",
+            ExpressionAttributeValues={
+                ":email": email,
+                ":updatedAt": now_iso,
+            },
+        )
 
 
 @logger.inject_lambda_context
@@ -30,51 +91,109 @@ def lambda_handler(event, context):
     if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
         return {"statusCode": 200, "headers": get_cors_headers()}
 
-    table = dynamo.Table(os.getenv("DYNAMODB_TABLE"))
+    ssm_client = _get_ssm()
+    kms_client = _get_kms()
+    dynamo_resource = _get_dynamo()
+    table = dynamo_resource.Table(os.getenv("DYNAMODB_TABLE"))
+
+    raw_path = event.get("rawPath") or event.get("requestContext", {}).get(
+        "http", {}
+    ).get("path", "")
+    is_mobile_flow = raw_path.rstrip("/").endswith("/auth/mobile/login")
 
     try:
         body = json.loads(event.get("body", "{}"))
         auth_code = body.get("code")
-        logger.info("📥 Recibido código de autorización de Google")
 
-        # 1. Recuperar Secretos
-        logger.info("🔍 Consultando secretos en SSM...")
-        env = os.getenv("ENVIRONMENT", "")
+        if not auth_code:
+            return cors_response(400, {"error": "Missing authorization code"})
+
+        env = os.getenv("ENVIRONMENT", "develop")
         prefix = f"/extension/{env}" if env else "/extension"
-        client_id = ssm.get_parameter(Name=f"{prefix}/google/client_id")["Parameter"][
-            "Value"
-        ]
-        client_secret = ssm.get_parameter(
-            Name=f"{prefix}/google/client_secret", WithDecryption=True
-        )["Parameter"]["Value"]
-        jwt_secret = ssm.get_parameter(
-            Name=f"{prefix}/auth/jwt_secret", WithDecryption=True
-        )["Parameter"]["Value"]
 
-        # 2. Intercambio de Tokens
-        logger.info("📡 Intercambiando código por tokens en Google OAuth2...")
-        redirect_uri = f"https://{os.getenv('EXTENSION_ID')}.chromiumapp.org/"
+        jwt_secret = _get_ssm_parameter(
+            ssm_client, f"{prefix}/auth/jwt_secret", with_decryption=True
+        )
 
-        response = httpx.post(
-            "https://oauth2.googleapis.com/token",
-            data={
+        if is_mobile_flow:
+            logger.info("📥 Iniciando flujo de autenticación móvil (PKCE)")
+            code_verifier = body.get("code_verifier")
+            redirect_uri = body.get("redirect_uri")
+
+            if not code_verifier:
+                logger.warning("❌ Falta code_verifier para PKCE en login móvil")
+                return cors_response(400, {"error": "Missing code_verifier for PKCE"})
+
+            if not redirect_uri:
+                logger.warning("❌ Falta redirect_uri en login móvil")
+                return cors_response(400, {"error": "Missing redirect_uri"})
+
+            # Obtener client_id y redirect_uri móvil específicos desde SSM (fuente canónica)
+            client_id = _get_ssm_parameter(
+                ssm_client, f"{prefix}/mobile/google/client_id"
+            )
+            expected_redirect_uri = _get_ssm_parameter(
+                ssm_client, f"{prefix}/mobile/google/redirect_uri"
+            )
+
+            if redirect_uri != expected_redirect_uri:
+                logger.warning("❌ redirect_uri no autorizada en flujo móvil")
+                return cors_response(
+                    400, {"error": "Invalid or disallowed redirect_uri"}
+                )
+
+            token_data = {
+                "code": auth_code,
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "code_verifier": code_verifier,
+                "grant_type": "authorization_code",
+            }
+
+            try:
+                client_secret = _get_ssm_parameter(
+                    ssm_client,
+                    f"{prefix}/mobile/google/client_secret",
+                    with_decryption=True,
+                )
+                if client_secret:
+                    token_data["client_secret"] = client_secret
+            except Exception:
+                pass
+
+        else:
+            # Flujo de extensión Chrome intacto
+            logger.info("📥 Iniciando flujo de autenticación de extensión Chrome")
+            client_id = _get_ssm_parameter(ssm_client, f"{prefix}/google/client_id")
+            client_secret = _get_ssm_parameter(
+                ssm_client, f"{prefix}/google/client_secret", with_decryption=True
+            )
+            redirect_uri = f"https://{os.getenv('EXTENSION_ID')}.chromiumapp.org/"
+
+            token_data = {
                 "code": auth_code,
                 "client_id": client_id,
                 "client_secret": client_secret,
                 "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code",
-            },
+            }
+
+        # Intercambio de tokens con Google OAuth2
+        response = httpx.post(
+            "https://oauth2.googleapis.com/token",
+            data=token_data,
         )
 
         if response.status_code != 200:
-            logger.error(f"❌ Fallo en Google OAuth: {response.text}")
+            logger.error(
+                f"❌ Fallo en Google OAuth: status_code={response.status_code}"
+            )
             return cors_response(401, {"error": "Google Auth Failed"})
 
         tokens = response.json()
         refresh_token = tokens.get("refresh_token")
 
-        # 3. Identificar Usuario
-        logger.info("👤 Recuperando información del perfil del usuario...")
+        # Identificar Usuario con Google userinfo
         user_info = httpx.get(
             "https://www.googleapis.com/oauth2/v3/userinfo",
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
@@ -82,35 +201,15 @@ def lambda_handler(event, context):
         user_id = user_info["sub"]
         email = user_info.get("email")
 
-        # 4. Cifrado y Persistencia
-        if refresh_token:
-            logger.info(f"🔐 Cifrando Refresh Token con KMS para el usuario {email}...")
-            kms_resp = kms.encrypt(
-                KeyId=os.getenv("KMS_KEY_ALIAS"),
-                Plaintext=refresh_token.encode("utf-8"),
-            )
-            encrypted_rt = base64.b64encode(kms_resp["CiphertextBlob"]).decode("utf-8")
+        # Cifrado y Persistencia Atómica en DynamoDB (preserva refresh token existente)
+        _save_or_update_user_profile(table, kms_client, user_id, email, refresh_token)
 
-            logger.info("💾 Guardando perfil en DynamoDB...")
-            table.put_item(
-                Item={
-                    "PK": f"USER#{user_id}",
-                    "SK": "PROFILE",
-                    "email": email,
-                    "encryptedRefreshToken": encrypted_rt,
-                    "updatedAt": datetime.datetime.now(datetime.UTC).isoformat(),
-                }
-            )
-        else:
-            logger.info("ℹ️ Google no envió Refresh Token (el usuario ya existía).")
-
-        # 5. Generar JWT de Nocturne
-        logger.info("🎫 Emitiendo Pasaporte Nocturne (JWT)...")
+        # Generar JWT interno de Nocturne
         nocturne_jwt = create_nocturne_jwt(user_id, email, jwt_secret)
 
         logger.info(f"✅ Login exitoso para {email}")
         return cors_response(200, {"token": nocturne_jwt, "user": email})
 
-    except Exception as e:
+    except Exception:
         logger.exception("🔥 Error crítico en λ-Auth")
         return cors_response(500, {"error": "Internal Server Error"})
