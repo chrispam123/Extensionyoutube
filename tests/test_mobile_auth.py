@@ -310,6 +310,7 @@ def test_mobile_auth_google_token_exchange_failure(aws_env, mocker):
     assert response["statusCode"] == 401
     body = json.loads(response["body"])
     assert body["error"] == "Google Auth Failed"
+    assert "details" in body
 
 
 @mock_aws
@@ -369,3 +370,62 @@ def test_extension_auth_regression(aws_env, mocker):
     sent_data = mock_post.call_args[1]["data"]
     assert sent_data["redirect_uri"] == "https://abcdefghijklmnop.chromiumapp.org/"
     assert "code_verifier" not in sent_data
+
+
+@mock_aws
+def test_mobile_auth_unconfigured_client_id_returns_500(aws_env):
+    infra = _create_mock_aws_infrastructure()
+    ssm = infra["ssm"]
+    ssm.put_parameter(
+        Name="/extension/develop/mobile/google/client_id",
+        Value="REPLACE_ME",
+        Type="String",
+        Overwrite=True,
+    )
+    mobile_redirect = "com.googleusercontent.apps.937802721244-0tovqumfb5lpgmqgo1r6kq1fposcstst:/oauth2callback"
+
+    event = {
+        "rawPath": "/auth/mobile/login",
+        "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
+        "body": json.dumps(
+            {
+                "code": "auth-code",
+                "code_verifier": "verifier",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
+    }
+
+    response = lambda_handler(event, MockContext())
+    assert response["statusCode"] == 500
+    body = json.loads(response["body"])
+    assert "client_id is REPLACE_ME" in body["error"]
+
+
+@mock_aws
+def test_mobile_auth_unconfigured_redirect_uri_returns_500(aws_env):
+    infra = _create_mock_aws_infrastructure()
+    ssm = infra["ssm"]
+    ssm.put_parameter(
+        Name="/extension/develop/mobile/google/redirect_uri",
+        Value="REPLACE_ME",
+        Type="String",
+        Overwrite=True,
+    )
+
+    event = {
+        "rawPath": "/auth/mobile/login",
+        "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
+        "body": json.dumps(
+            {
+                "code": "auth-code",
+                "code_verifier": "verifier",
+                "redirect_uri": "any_uri",
+            }
+        ),
+    }
+
+    response = lambda_handler(event, MockContext())
+    assert response["statusCode"] == 500
+    body = json.loads(response["body"])
+    assert "redirect_uri is REPLACE_ME" in body["error"]
