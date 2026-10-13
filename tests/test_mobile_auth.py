@@ -54,6 +54,11 @@ def _create_mock_aws_infrastructure():
         Type="String",
     )
     ssm.put_parameter(
+        Name="/extension/develop/mobile/google/redirect_uri",
+        Value="com.googleusercontent.apps.937802721244-0tovqumfb5lpgmqgo1r6kq1fposcstst:/oauth2callback",
+        Type="String",
+    )
+    ssm.put_parameter(
         Name="/extension/develop/auth/jwt_secret",
         Value="super-secret-jwt-signing-key-12345",
         Type="SecureString",

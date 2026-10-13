@@ -30,4 +30,17 @@ aws ssm put-parameter --name "/extension/$ENV/google/client_id" --value "$GOOGLE
 aws ssm put-parameter --name "/extension/$ENV/google/client_secret" --value "$GOOGLE_CLIENT_SECRET" --type "SecureString" --key-id "$KMS_KEY" --overwrite
 aws ssm put-parameter --name "/extension/$ENV/auth/jwt_secret" --value "$JWT_SECRET" --type "SecureString" --key-id "$KMS_KEY" --overwrite
 
+# 4. Sincronizar parámetros móviles Android (solo en develop, cliente público PKCE)
+if [[ "$ENV" == "develop" ]]; then
+    if [[ -n "$GOOGLE_MOBILE_CLIENT_ID" ]]; then
+        echo "📱 Subiendo /extension/$ENV/mobile/google/client_id..."
+        aws ssm put-parameter --name "/extension/$ENV/mobile/google/client_id" --value "$GOOGLE_MOBILE_CLIENT_ID" --type "String" --overwrite
+    fi
+    if [[ -n "$GOOGLE_MOBILE_REDIRECT_URI" ]]; then
+        echo "📱 Subiendo /extension/$ENV/mobile/google/redirect_uri..."
+        aws ssm put-parameter --name "/extension/$ENV/mobile/google/redirect_uri" --value "$GOOGLE_MOBILE_REDIRECT_URI" --type "String" --overwrite
+    fi
+fi
+
 echo "✅ Sincronización completada para $ENV."
+

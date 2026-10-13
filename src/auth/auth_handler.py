@@ -116,25 +116,11 @@ def lambda_handler(event, context):
                 logger.warning("❌ Falta redirect_uri en login móvil")
                 return cors_response(400, {"error": "Missing redirect_uri"})
 
-            # Obtener client_id móvil específico desde SSM
+            # Obtener client_id y redirect_uri móvil específicos desde SSM (fuente canónica)
             client_id = _get_ssm_parameter(ssm_client, f"{prefix}/mobile/google/client_id")
+            expected_redirect_uri = _get_ssm_parameter(ssm_client, f"{prefix}/mobile/google/redirect_uri")
 
-            # Allowlist estricta de redirect_uri móvil
-            client_id_prefix = client_id.split(".apps.googleusercontent.com")[0]
-            allowed_redirect_uris = [
-                f"com.googleusercontent.apps.{client_id_prefix}:/oauth2callback",
-                f"com.googleusercontent.apps.{client_id_prefix}:///oauth2callback",
-            ]
-
-            # Permitir redirect_uri custom adicional si se define en SSM
-            try:
-                custom_allowed_uri = _get_ssm_parameter(ssm_client, f"{prefix}/mobile/google/redirect_uri")
-                if custom_allowed_uri:
-                    allowed_redirect_uris.append(custom_allowed_uri)
-            except Exception:
-                pass
-
-            if redirect_uri not in allowed_redirect_uris:
+            if redirect_uri != expected_redirect_uri:
                 logger.warning("❌ redirect_uri no autorizada en flujo móvil")
                 return cors_response(400, {"error": "Invalid or disallowed redirect_uri"})
 

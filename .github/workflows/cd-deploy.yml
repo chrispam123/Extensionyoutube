@@ -97,6 +97,8 @@ jobs:
           TF_VAR_use_localstack: "false"
           TF_VAR_environment: "develop"
           TF_VAR_extension_id: "hafnlkjddgcncigkjfemaibmookldhlp"
+          TF_VAR_google_mobile_client_id: ${{ secrets.GOOGLE_MOBILE_CLIENT_ID }}
+          TF_VAR_google_mobile_redirect_uri: ${{ secrets.GOOGLE_MOBILE_REDIRECT_URI }}
         run: |
           terraform init
           terraform apply -auto-approve -input=false

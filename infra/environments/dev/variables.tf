@@ -23,3 +23,10 @@ variable "google_mobile_client_id" {
   type        = string
   default     = ""
 }
+
+variable "google_mobile_redirect_uri" {
+  description = "URI de redirección autorizada de Google OAuth2 para la app Android"
+  type        = string
+  default     = ""
+}
+

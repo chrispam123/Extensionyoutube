@@ -335,6 +335,15 @@ resource "aws_ssm_parameter" "google_mobile_client_id" {
   }
 }
 
+resource "aws_ssm_parameter" "google_mobile_redirect_uri" {
+  name  = "/extension/${var.environment}/mobile/google/redirect_uri"
+  type  = "String"
+  value = var.google_mobile_redirect_uri != "" ? var.google_mobile_redirect_uri : "REPLACE_ME"
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "google_client_secret" {
   name   = "/extension/${var.environment}/google/client_secret"
   type   = "SecureString"
@@ -839,6 +848,7 @@ resource "aws_iam_role_policy" "auth_permissions" {
         Resource = [
           aws_ssm_parameter.google_client_id.arn,
           aws_ssm_parameter.google_mobile_client_id.arn,
+          aws_ssm_parameter.google_mobile_redirect_uri.arn,
           aws_ssm_parameter.google_client_secret.arn,
           aws_ssm_parameter.jwt_secret.arn
         ]
