@@ -10,7 +10,9 @@ class MockContext:
     def __init__(self):
         self.function_name = "extension-auth-develop"
         self.memory_limit_in_mb = "256"
-        self.invoked_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:extension-auth-develop"
+        self.invoked_function_arn = (
+            "arn:aws:lambda:us-east-1:123456789012:function:extension-auth-develop"
+        )
         self.aws_request_id = "test-request-auth-123"
 
 
@@ -21,7 +23,10 @@ def _create_mock_aws_infrastructure():
 
     # 1. Crear KMS Key y Alias
     key = kms.create_key(Description="Token key")
-    kms.create_alias(AliasName="alias/extension/token-key-develop", TargetKeyId=key["KeyMetadata"]["KeyId"])
+    kms.create_alias(
+        AliasName="alias/extension/token-key-develop",
+        TargetKeyId=key["KeyMetadata"]["KeyId"],
+    )
 
     # 2. Crear Tabla DynamoDB
     table = dynamodb.create_table(
@@ -101,11 +106,13 @@ def test_mobile_auth_success(aws_env, mocker):
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code": "valid-auth-code",
-            "code_verifier": "valid-pkce-verifier-123",
-            "redirect_uri": mobile_redirect,
-        }),
+        "body": json.dumps(
+            {
+                "code": "valid-auth-code",
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
@@ -122,7 +129,9 @@ def test_mobile_auth_success(aws_env, mocker):
     assert sent_data["redirect_uri"] == mobile_redirect
 
     # Validar persistencia en DynamoDB
-    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"}).get("Item")
+    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"}).get(
+        "Item"
+    )
     assert item is not None
     assert item["email"] == "user@gmail.com"
     assert "encryptedRefreshToken" in item
@@ -135,10 +144,12 @@ def test_mobile_auth_missing_code_verifier(aws_env):
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code": "valid-auth-code",
-            "redirect_uri": mobile_redirect,
-        }),
+        "body": json.dumps(
+            {
+                "code": "valid-auth-code",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
@@ -154,11 +165,13 @@ def test_mobile_auth_disallowed_redirect_uri(aws_env):
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code": "valid-auth-code",
-            "code_verifier": "valid-pkce-verifier-123",
-            "redirect_uri": "https://abcdefghijklmnop.chromiumapp.org/",
-        }),
+        "body": json.dumps(
+            {
+                "code": "valid-auth-code",
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": "https://abcdefghijklmnop.chromiumapp.org/",
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
@@ -168,7 +181,9 @@ def test_mobile_auth_disallowed_redirect_uri(aws_env):
 
 
 @mock_aws
-def test_mobile_auth_preserves_existing_refresh_token_when_none_returned(aws_env, mocker):
+def test_mobile_auth_preserves_existing_refresh_token_when_none_returned(
+    aws_env, mocker
+):
     infra = _create_mock_aws_infrastructure()
     table = infra["table"]
     mobile_redirect = "com.googleusercontent.apps.937802721244-0tovqumfb5lpgmqgo1r6kq1fposcstst:/oauth2callback"
@@ -200,18 +215,22 @@ def test_mobile_auth_preserves_existing_refresh_token_when_none_returned(aws_env
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code": "valid-auth-code",
-            "code_verifier": "valid-pkce-verifier-123",
-            "redirect_uri": mobile_redirect,
-        }),
+        "body": json.dumps(
+            {
+                "code": "valid-auth-code",
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
     assert response["statusCode"] == 200
 
     # Verificar que el encryptedRefreshToken NO fue borrado ni sobrescrito
-    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"})["Item"]
+    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"})[
+        "Item"
+    ]
     assert item["encryptedRefreshToken"] == "PREVIOUS_ENCRYPTED_TOKEN"
 
 
@@ -248,17 +267,21 @@ def test_mobile_auth_replaces_refresh_token_when_new_returned(aws_env, mocker):
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code": "valid-auth-code",
-            "code_verifier": "valid-pkce-verifier-123",
-            "redirect_uri": mobile_redirect,
-        }),
+        "body": json.dumps(
+            {
+                "code": "valid-auth-code",
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
     assert response["statusCode"] == 200
 
-    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"})["Item"]
+    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"})[
+        "Item"
+    ]
     assert item["encryptedRefreshToken"] != "OLD_TOKEN"
 
 
@@ -274,11 +297,13 @@ def test_mobile_auth_google_token_exchange_failure(aws_env, mocker):
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code": "invalid-auth-code",
-            "code_verifier": "valid-pkce-verifier-123",
-            "redirect_uri": mobile_redirect,
-        }),
+        "body": json.dumps(
+            {
+                "code": "invalid-auth-code",
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
@@ -294,10 +319,12 @@ def test_mobile_auth_missing_code(aws_env):
     event = {
         "rawPath": "/auth/mobile/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
-        "body": json.dumps({
-            "code_verifier": "valid-pkce-verifier-123",
-            "redirect_uri": mobile_redirect,
-        }),
+        "body": json.dumps(
+            {
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())
@@ -325,9 +352,11 @@ def test_extension_auth_regression(aws_env, mocker):
     event = {
         "rawPath": "/auth/login",
         "requestContext": {"http": {"method": "POST", "path": "/auth/login"}},
-        "body": json.dumps({
-            "code": "ext-auth-code",
-        }),
+        "body": json.dumps(
+            {
+                "code": "ext-auth-code",
+            }
+        ),
     }
 
     response = lambda_handler(event, MockContext())

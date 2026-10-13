@@ -25,15 +25,21 @@ def _get_region():
 
 
 def _get_ssm():
-    return boto3.client("ssm", region_name=_get_region(), endpoint_url=_get_endpoint_url())
+    return boto3.client(
+        "ssm", region_name=_get_region(), endpoint_url=_get_endpoint_url()
+    )
 
 
 def _get_kms():
-    return boto3.client("kms", region_name=_get_region(), endpoint_url=_get_endpoint_url())
+    return boto3.client(
+        "kms", region_name=_get_region(), endpoint_url=_get_endpoint_url()
+    )
 
 
 def _get_dynamo():
-    return boto3.resource("dynamodb", region_name=_get_region(), endpoint_url=_get_endpoint_url())
+    return boto3.resource(
+        "dynamodb", region_name=_get_region(), endpoint_url=_get_endpoint_url()
+    )
 
 
 def _get_ssm_parameter(ssm_client, name: str, with_decryption: bool = False) -> str:
@@ -41,7 +47,9 @@ def _get_ssm_parameter(ssm_client, name: str, with_decryption: bool = False) -> 
     return response["Parameter"]["Value"]
 
 
-def _save_or_update_user_profile(table, kms_client, user_id: str, email: str, refresh_token: str | None):
+def _save_or_update_user_profile(
+    table, kms_client, user_id: str, email: str, refresh_token: str | None
+):
     """
     Persiste o actualiza atómicamente el perfil del usuario.
     Si Google no devuelve refresh_token (usuario recurrente),
@@ -88,7 +96,9 @@ def lambda_handler(event, context):
     dynamo_resource = _get_dynamo()
     table = dynamo_resource.Table(os.getenv("DYNAMODB_TABLE"))
 
-    raw_path = event.get("rawPath") or event.get("requestContext", {}).get("http", {}).get("path", "")
+    raw_path = event.get("rawPath") or event.get("requestContext", {}).get(
+        "http", {}
+    ).get("path", "")
     is_mobile_flow = raw_path.rstrip("/").endswith("/auth/mobile/login")
 
     try:
@@ -101,7 +111,9 @@ def lambda_handler(event, context):
         env = os.getenv("ENVIRONMENT", "develop")
         prefix = f"/extension/{env}" if env else "/extension"
 
-        jwt_secret = _get_ssm_parameter(ssm_client, f"{prefix}/auth/jwt_secret", with_decryption=True)
+        jwt_secret = _get_ssm_parameter(
+            ssm_client, f"{prefix}/auth/jwt_secret", with_decryption=True
+        )
 
         if is_mobile_flow:
             logger.info("📥 Iniciando flujo de autenticación móvil (PKCE)")
@@ -117,12 +129,18 @@ def lambda_handler(event, context):
                 return cors_response(400, {"error": "Missing redirect_uri"})
 
             # Obtener client_id y redirect_uri móvil específicos desde SSM (fuente canónica)
-            client_id = _get_ssm_parameter(ssm_client, f"{prefix}/mobile/google/client_id")
-            expected_redirect_uri = _get_ssm_parameter(ssm_client, f"{prefix}/mobile/google/redirect_uri")
+            client_id = _get_ssm_parameter(
+                ssm_client, f"{prefix}/mobile/google/client_id"
+            )
+            expected_redirect_uri = _get_ssm_parameter(
+                ssm_client, f"{prefix}/mobile/google/redirect_uri"
+            )
 
             if redirect_uri != expected_redirect_uri:
                 logger.warning("❌ redirect_uri no autorizada en flujo móvil")
-                return cors_response(400, {"error": "Invalid or disallowed redirect_uri"})
+                return cors_response(
+                    400, {"error": "Invalid or disallowed redirect_uri"}
+                )
 
             token_data = {
                 "code": auth_code,
@@ -133,7 +151,11 @@ def lambda_handler(event, context):
             }
 
             try:
-                client_secret = _get_ssm_parameter(ssm_client, f"{prefix}/mobile/google/client_secret", with_decryption=True)
+                client_secret = _get_ssm_parameter(
+                    ssm_client,
+                    f"{prefix}/mobile/google/client_secret",
+                    with_decryption=True,
+                )
                 if client_secret:
                     token_data["client_secret"] = client_secret
             except Exception:
@@ -143,7 +165,9 @@ def lambda_handler(event, context):
             # Flujo de extensión Chrome intacto
             logger.info("📥 Iniciando flujo de autenticación de extensión Chrome")
             client_id = _get_ssm_parameter(ssm_client, f"{prefix}/google/client_id")
-            client_secret = _get_ssm_parameter(ssm_client, f"{prefix}/google/client_secret", with_decryption=True)
+            client_secret = _get_ssm_parameter(
+                ssm_client, f"{prefix}/google/client_secret", with_decryption=True
+            )
             redirect_uri = f"https://{os.getenv('EXTENSION_ID')}.chromiumapp.org/"
 
             token_data = {
@@ -161,7 +185,9 @@ def lambda_handler(event, context):
         )
 
         if response.status_code != 200:
-            logger.error(f"❌ Fallo en Google OAuth: status_code={response.status_code}")
+            logger.error(
+                f"❌ Fallo en Google OAuth: status_code={response.status_code}"
+            )
             return cors_response(401, {"error": "Google Auth Failed"})
 
         tokens = response.json()
