@@ -5,17 +5,21 @@ from aws_lambda_powertools import Logger
 logger = Logger()
 
 
-def refresh_access_token(client_id: str, client_secret: str, refresh_token: str) -> str:
+def refresh_access_token(
+    client_id: str, client_secret: str | None, refresh_token: str
+) -> str:
     """
     Habla con Google OAuth2 para obtener un nuevo Access Token.
+    Para clientes Android PKCE, client_secret es None y se omite del payload.
     """
     url = "https://oauth2.googleapis.com/token"
     data = {
         "client_id": client_id,
-        "client_secret": client_secret,
         "refresh_token": refresh_token,
         "grant_type": "refresh_token",
     }
+    if client_secret:
+        data["client_secret"] = client_secret
 
     try:
         # Usamos un timeout estricto de 5 segundos para no colgar la Lambda

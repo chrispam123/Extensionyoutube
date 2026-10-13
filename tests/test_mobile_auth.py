@@ -129,12 +129,13 @@ def test_mobile_auth_success(aws_env, mocker):
     assert sent_data["redirect_uri"] == mobile_redirect
 
     # Validar persistencia en DynamoDB
-    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"}).get(
-        "Item"
-    )
+    item = table.get_item(
+        Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE#ANDROID"}
+    ).get("Item")
     assert item is not None
     assert item["email"] == "user@gmail.com"
     assert "encryptedRefreshToken" in item
+    assert item.get("platform") == "ANDROID"
 
 
 @mock_aws
@@ -192,7 +193,7 @@ def test_mobile_auth_preserves_existing_refresh_token_when_none_returned(
     table.put_item(
         Item={
             "PK": "USER#google-user-sub-999",
-            "SK": "PROFILE",
+            "SK": "PROFILE#ANDROID",
             "email": "user@gmail.com",
             "encryptedRefreshToken": "PREVIOUS_ENCRYPTED_TOKEN",
             "updatedAt": "2026-01-01T00:00:00Z",
@@ -228,9 +229,9 @@ def test_mobile_auth_preserves_existing_refresh_token_when_none_returned(
     assert response["statusCode"] == 200
 
     # Verificar que el encryptedRefreshToken NO fue borrado ni sobrescrito
-    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"})[
-        "Item"
-    ]
+    item = table.get_item(
+        Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE#ANDROID"}
+    )["Item"]
     assert item["encryptedRefreshToken"] == "PREVIOUS_ENCRYPTED_TOKEN"
 
 
@@ -244,7 +245,7 @@ def test_mobile_auth_replaces_refresh_token_when_new_returned(aws_env, mocker):
     table.put_item(
         Item={
             "PK": "USER#google-user-sub-999",
-            "SK": "PROFILE",
+            "SK": "PROFILE#ANDROID",
             "email": "user@gmail.com",
             "encryptedRefreshToken": "OLD_TOKEN",
             "updatedAt": "2026-01-01T00:00:00Z",
@@ -279,9 +280,9 @@ def test_mobile_auth_replaces_refresh_token_when_new_returned(aws_env, mocker):
     response = lambda_handler(event, MockContext())
     assert response["statusCode"] == 200
 
-    item = table.get_item(Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE"})[
-        "Item"
-    ]
+    item = table.get_item(
+        Key={"PK": "USER#google-user-sub-999", "SK": "PROFILE#ANDROID"}
+    )["Item"]
     assert item["encryptedRefreshToken"] != "OLD_TOKEN"
 
 
@@ -429,3 +430,86 @@ def test_mobile_auth_unconfigured_redirect_uri_returns_500(aws_env):
     assert response["statusCode"] == 500
     body = json.loads(response["body"])
     assert "redirect_uri is REPLACE_ME" in body["error"]
+
+
+@mock_aws
+def test_mobile_and_chrome_profiles_are_isolated(aws_env, mocker):
+    """
+    Verifica que el login desde Android NO sobreescribe el perfil ni el token de Chrome,
+    permitiendo la convivencia de ambas plataformas para el mismo usuario.
+    """
+    infra = _create_mock_aws_infrastructure()
+    table = infra["table"]
+    user_id = "google-user-sub-999"
+    mobile_redirect = "com.googleusercontent.apps.937802721244-0tovqumfb5lpgmqgo1r6kq1fposcstst:/oauth2callback"
+
+    # 1. Pre-crear perfil Chrome existente y su espejo legacy
+    chrome_token = "CHROME_ENCRYPTED_TOKEN"
+    table.put_item(
+        Item={
+            "PK": f"USER#{user_id}",
+            "SK": "PROFILE#CHROME",
+            "email": "user@gmail.com",
+            "encryptedRefreshToken": chrome_token,
+            "platform": "CHROME",
+        }
+    )
+    table.put_item(
+        Item={
+            "PK": f"USER#{user_id}",
+            "SK": "PROFILE",
+            "email": "user@gmail.com",
+            "encryptedRefreshToken": chrome_token,
+            "platform": "CHROME",
+        }
+    )
+
+    # 2. Mock login Android
+    mock_post = mocker.patch("httpx.post")
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "access_token": "android-mock-access-token",
+        "refresh_token": "ANDROID_RAW_REFRESH_TOKEN",
+    }
+
+    mock_get = mocker.patch("httpx.get")
+    mock_get.return_value.json.return_value = {
+        "sub": user_id,
+        "email": "user@gmail.com",
+    }
+
+    event = {
+        "rawPath": "/auth/mobile/login",
+        "requestContext": {"http": {"method": "POST", "path": "/auth/mobile/login"}},
+        "body": json.dumps(
+            {
+                "code": "valid-auth-code",
+                "code_verifier": "valid-pkce-verifier-123",
+                "redirect_uri": mobile_redirect,
+            }
+        ),
+    }
+
+    response = lambda_handler(event, MockContext())
+    assert response["statusCode"] == 200
+
+    # 3. Comprobar que PROFILE#ANDROID se creó con su propio token
+    android_item = table.get_item(
+        Key={"PK": f"USER#{user_id}", "SK": "PROFILE#ANDROID"}
+    ).get("Item")
+    assert android_item is not None
+    assert android_item["platform"] == "ANDROID"
+    assert android_item["encryptedRefreshToken"] != chrome_token
+
+    # 4. Comprobar que PROFILE#CHROME y PROFILE se mantienen intactos
+    chrome_item = table.get_item(
+        Key={"PK": f"USER#{user_id}", "SK": "PROFILE#CHROME"}
+    ).get("Item")
+    assert chrome_item is not None
+    assert chrome_item["encryptedRefreshToken"] == chrome_token
+
+    mirror_item = table.get_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"}).get(
+        "Item"
+    )
+    assert mirror_item is not None
+    assert mirror_item["encryptedRefreshToken"] == chrome_token
