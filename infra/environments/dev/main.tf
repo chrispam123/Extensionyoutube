@@ -862,7 +862,12 @@ resource "aws_iam_role_policy" "auth_permissions" {
       },
       {
         Sid      = "AllowDynamoUserManagement"
-        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Action   = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:TransactWriteItems",
+        ]
         Effect   = "Allow"
         Resource = aws_dynamodb_table.jobs_table.arn
         # SEGURIDAD AVANZADA: Solo puede tocar items de usuario
