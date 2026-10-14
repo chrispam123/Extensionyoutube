@@ -6,6 +6,7 @@ import os
 
 import boto3
 import httpx
+from boto3.dynamodb.types import TypeSerializer
 from aws_lambda_powertools import Logger, Tracer
 
 from shared.auth import create_nocturne_jwt
@@ -72,35 +73,53 @@ def _save_or_update_user_profile(
         keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE#CHROME"})
         keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE"})
 
+    update_expression = "SET email = :email, platform = :platform, updatedAt = :updatedAt"
+    expression_values = {
+        ":email": email,
+        ":platform": platform,
+        ":updatedAt": now_iso,
+    }
+
     if refresh_token:
         kms_resp = kms_client.encrypt(
             KeyId=os.getenv("KMS_KEY_ALIAS"),
             Plaintext=refresh_token.encode("utf-8"),
         )
         encrypted_rt = base64.b64encode(kms_resp["CiphertextBlob"]).decode("utf-8")
+        update_expression = (
+            "SET email = :email, platform = :platform, "
+            "encryptedRefreshToken = :rt, updatedAt = :updatedAt"
+        )
+        expression_values[":rt"] = encrypted_rt
 
-        for key in keys_to_update:
-            table.update_item(
-                Key=key,
-                UpdateExpression="SET email = :email, platform = :platform, encryptedRefreshToken = :rt, updatedAt = :updatedAt",
-                ExpressionAttributeValues={
-                    ":email": email,
-                    ":platform": platform,
-                    ":rt": encrypted_rt,
-                    ":updatedAt": now_iso,
-                },
-            )
+    if len(keys_to_update) == 1:
+        table.update_item(
+            Key=keys_to_update[0],
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_values,
+        )
     else:
-        for key in keys_to_update:
-            table.update_item(
-                Key=key,
-                UpdateExpression="SET email = :email, platform = :platform, updatedAt = :updatedAt",
-                ExpressionAttributeValues={
-                    ":email": email,
-                    ":platform": platform,
-                    ":updatedAt": now_iso,
-                },
-            )
+        serializer = TypeSerializer()
+        serialized_values = {
+            name: serializer.serialize(value)
+            for name, value in expression_values.items()
+        }
+        table.meta.client.transact_write_items(
+            TransactItems=[
+                {
+                    "Update": {
+                        "TableName": table.name,
+                        "Key": {
+                            name: serializer.serialize(value)
+                            for name, value in key.items()
+                        },
+                        "UpdateExpression": update_expression,
+                        "ExpressionAttributeValues": dict(serialized_values),
+                    }
+                }
+                for key in keys_to_update
+            ]
+        )
 
 
 @logger.inject_lambda_context
@@ -234,34 +253,22 @@ def lambda_handler(event, context):
         )
 
         if response.status_code != 200:
-            error_details = None
+            provider_error = None
             try:
                 parsed = response.json()
                 if isinstance(parsed, dict):
-                    error_details = parsed
+                    provider_error = parsed.get("error")
             except Exception:
                 pass
 
-            if error_details is None:
-                error_details = {
-                    "error": str(getattr(response, "text", "Unknown error"))
-                }
+            if provider_error is None:
+                provider_error = "unknown"
 
             logger.error(
-                f"❌ Fallo en Google OAuth: status_code={response.status_code}"
+                f"❌ Fallo en Google OAuth: status_code={response.status_code}, "
+                f"provider_error={provider_error}"
             )
-            return cors_response(
-                401,
-                {
-                    "error": "Google Auth Failed",
-                    "details": error_details,
-                    "debug": {
-                        "is_mobile_flow": is_mobile_flow,
-                        "raw_path": raw_path,
-                        "token_keys": list(token_data.keys()),
-                    },
-                },
-            )
+            return cors_response(401, {"error": "Google Auth Failed"})
 
         tokens = response.json()
         refresh_token = tokens.get("refresh_token")
