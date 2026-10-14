@@ -311,7 +311,8 @@ def test_mobile_auth_google_token_exchange_failure(aws_env, mocker):
     assert response["statusCode"] == 401
     body = json.loads(response["body"])
     assert body["error"] == "Google Auth Failed"
-    assert "details" in body
+    assert "details" not in body
+    assert "debug" not in body
 
 
 @mock_aws
@@ -337,7 +338,13 @@ def test_mobile_auth_missing_code(aws_env):
 
 @mock_aws
 def test_extension_auth_regression(aws_env, mocker):
-    _create_mock_aws_infrastructure()
+    infra = _create_mock_aws_infrastructure()
+    dynamo_resource = mocker.Mock()
+    dynamo_resource.Table.return_value = infra["table"]
+    mocker.patch("src.auth.auth_handler._get_dynamo", return_value=dynamo_resource)
+    transaction = mocker.patch.object(
+        infra["table"].meta.client, "transact_write_items"
+    )
     mock_post = mocker.patch("httpx.post")
     mock_post.return_value.status_code = 200
     mock_post.return_value.json.return_value = {
@@ -371,6 +378,12 @@ def test_extension_auth_regression(aws_env, mocker):
     sent_data = mock_post.call_args[1]["data"]
     assert sent_data["redirect_uri"] == "https://abcdefghijklmnop.chromiumapp.org/"
     assert "code_verifier" not in sent_data
+
+    transaction.assert_called_once()
+    transaction_items = transaction.call_args.kwargs["TransactItems"]
+    assert len(transaction_items) == 2
+    transaction_keys = {item["Update"]["Key"]["SK"]["S"] for item in transaction_items}
+    assert transaction_keys == {"PROFILE#CHROME", "PROFILE"}
 
 
 @mock_aws
