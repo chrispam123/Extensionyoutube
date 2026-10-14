@@ -342,8 +342,8 @@ def test_extension_auth_regression(aws_env, mocker):
     dynamo_resource = mocker.Mock()
     dynamo_resource.Table.return_value = infra["table"]
     mocker.patch("src.auth.auth_handler._get_dynamo", return_value=dynamo_resource)
-    transaction = mocker.patch.object(
-        infra["table"].meta.client, "transact_write_items"
+    update_item = mocker.patch.object(
+        infra["table"], "update_item", wraps=infra["table"].update_item
     )
     mock_post = mocker.patch("httpx.post")
     mock_post.return_value.status_code = 200
@@ -379,14 +379,11 @@ def test_extension_auth_regression(aws_env, mocker):
     assert sent_data["redirect_uri"] == "https://abcdefghijklmnop.chromiumapp.org/"
     assert "code_verifier" not in sent_data
 
-    transaction.assert_called_once()
-    transaction_items = transaction.call_args.kwargs["TransactItems"]
-    assert len(transaction_items) == 2
-    transaction_keys = {item["Update"]["Key"]["SK"]["S"] for item in transaction_items}
-    assert transaction_keys == {"PROFILE#CHROME", "PROFILE"}
-    for item in transaction_items:
-        update = item["Update"]
-        assert update["ExpressionAttributeNames"] == {
+    assert update_item.call_count == 2
+    update_keys = {call.kwargs["Key"]["SK"] for call in update_item.call_args_list}
+    assert update_keys == {"PROFILE#CHROME", "PROFILE"}
+    for call in update_item.call_args_list:
+        assert call.kwargs["ExpressionAttributeNames"] == {
             "#email": "email",
             "#platform": "platform",
             "#updatedAt": "updatedAt",
