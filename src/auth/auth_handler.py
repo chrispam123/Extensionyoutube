@@ -73,7 +73,9 @@ def _save_or_update_user_profile(
         keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE#CHROME"})
         keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE"})
 
-    update_expression = "SET email = :email, platform = :platform, updatedAt = :updatedAt"
+    update_expression = (
+        "SET email = :email, platform = :platform, updatedAt = :updatedAt"
+    )
     expression_values = {
         ":email": email,
         ":platform": platform,

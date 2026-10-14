@@ -341,9 +341,7 @@ def test_extension_auth_regression(aws_env, mocker):
     infra = _create_mock_aws_infrastructure()
     dynamo_resource = mocker.Mock()
     dynamo_resource.Table.return_value = infra["table"]
-    mocker.patch(
-        "src.auth.auth_handler._get_dynamo", return_value=dynamo_resource
-    )
+    mocker.patch("src.auth.auth_handler._get_dynamo", return_value=dynamo_resource)
     transaction = mocker.patch.object(
         infra["table"].meta.client, "transact_write_items"
     )
@@ -384,9 +382,7 @@ def test_extension_auth_regression(aws_env, mocker):
     transaction.assert_called_once()
     transaction_items = transaction.call_args.kwargs["TransactItems"]
     assert len(transaction_items) == 2
-    transaction_keys = {
-        item["Update"]["Key"]["SK"]["S"] for item in transaction_items
-    }
+    transaction_keys = {item["Update"]["Key"]["SK"]["S"] for item in transaction_items}
     assert transaction_keys == {"PROFILE#CHROME", "PROFILE"}
 
 
