@@ -8,6 +8,7 @@ import boto3
 import httpx
 from boto3.dynamodb.types import TypeSerializer
 from aws_lambda_powertools import Logger, Tracer
+from botocore.exceptions import ClientError
 
 from shared.auth import create_nocturne_jwt
 from shared.responses import cors_response, get_cors_headers
@@ -113,23 +114,44 @@ def _save_or_update_user_profile(
             name: serializer.serialize(value)
             for name, value in expression_values.items()
         }
-        table.meta.client.transact_write_items(
-            TransactItems=[
-                {
-                    "Update": {
-                        "TableName": table.name,
-                        "Key": {
-                            name: serializer.serialize(value)
-                            for name, value in key.items()
-                        },
-                        "UpdateExpression": update_expression,
-                        "ExpressionAttributeNames": expression_attribute_names,
-                        "ExpressionAttributeValues": dict(serialized_values),
+        try:
+            table.meta.client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Update": {
+                            "TableName": table.name,
+                            "Key": {
+                                name: serializer.serialize(value)
+                                for name, value in key.items()
+                            },
+                            "UpdateExpression": update_expression,
+                            "ExpressionAttributeNames": dict(
+                                expression_attribute_names
+                            ),
+                            "ExpressionAttributeValues": dict(serialized_values),
+                        }
                     }
-                }
-                for key in keys_to_update
+                    for key in keys_to_update
+                ]
+            )
+        except ClientError as error:
+            error_details = error.response.get("Error", {})
+            cancellation_reasons = error.response.get("CancellationReasons", [])
+            cancellation_codes = [
+                reason.get("Code")
+                for reason in cancellation_reasons
+                if reason.get("Code")
             ]
-        )
+            request_id = error.response.get("ResponseMetadata", {}).get(
+                "RequestId", "unknown"
+            )
+            logger.error(
+                "Chrome profile transaction failed: "
+                f"error_code={error_details.get('Code', 'unknown')}, "
+                f"cancellation_codes={cancellation_codes or ['unavailable']}, "
+                f"request_id={request_id}"
+            )
+            raise
 
 
 @logger.inject_lambda_context
