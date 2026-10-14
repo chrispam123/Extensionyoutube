@@ -73,8 +73,13 @@ def _save_or_update_user_profile(
         keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE#CHROME"})
         keys_to_update.append({"PK": f"USER#{user_id}", "SK": "PROFILE"})
 
+    expression_attribute_names = {
+        "#email": "email",
+        "#platform": "platform",
+        "#updatedAt": "updatedAt",
+    }
     update_expression = (
-        "SET email = :email, platform = :platform, updatedAt = :updatedAt"
+        "SET #email = :email, #platform = :platform, #updatedAt = :updatedAt"
     )
     expression_values = {
         ":email": email,
@@ -89,15 +94,17 @@ def _save_or_update_user_profile(
         )
         encrypted_rt = base64.b64encode(kms_resp["CiphertextBlob"]).decode("utf-8")
         update_expression = (
-            "SET email = :email, platform = :platform, "
-            "encryptedRefreshToken = :rt, updatedAt = :updatedAt"
+            "SET #email = :email, #platform = :platform, "
+            "#encryptedRefreshToken = :rt, #updatedAt = :updatedAt"
         )
+        expression_attribute_names["#encryptedRefreshToken"] = "encryptedRefreshToken"
         expression_values[":rt"] = encrypted_rt
 
     if len(keys_to_update) == 1:
         table.update_item(
             Key=keys_to_update[0],
             UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
             ExpressionAttributeValues=expression_values,
         )
     else:
@@ -116,6 +123,7 @@ def _save_or_update_user_profile(
                             for name, value in key.items()
                         },
                         "UpdateExpression": update_expression,
+                        "ExpressionAttributeNames": expression_attribute_names,
                         "ExpressionAttributeValues": dict(serialized_values),
                     }
                 }

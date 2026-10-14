@@ -384,6 +384,14 @@ def test_extension_auth_regression(aws_env, mocker):
     assert len(transaction_items) == 2
     transaction_keys = {item["Update"]["Key"]["SK"]["S"] for item in transaction_items}
     assert transaction_keys == {"PROFILE#CHROME", "PROFILE"}
+    for item in transaction_items:
+        update = item["Update"]
+        assert update["ExpressionAttributeNames"] == {
+            "#email": "email",
+            "#platform": "platform",
+            "#updatedAt": "updatedAt",
+            "#encryptedRefreshToken": "encryptedRefreshToken",
+        }
 
 
 @mock_aws
