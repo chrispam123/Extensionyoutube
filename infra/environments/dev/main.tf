@@ -861,8 +861,8 @@ resource "aws_iam_role_policy" "auth_permissions" {
         Resource = aws_kms_key.token_key.arn
       },
       {
-        Sid      = "AllowDynamoUserManagement"
-        Action   = [
+        Sid = "AllowDynamoUserManagement"
+        Action = [
           "dynamodb:PutItem",
           "dynamodb:GetItem",
           "dynamodb:UpdateItem",
